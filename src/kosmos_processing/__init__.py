@@ -1,0 +1,51 @@
+"""
+Paquet regroupant les traitements d'image KOSMOS.
+Expose les fonctions principales de correction et d'analyse.
+"""
+from .algos_correction import (
+    Float2BGR,
+    BGR2Float,
+    AnalyseHisto,
+    PlotHistogram,
+    process_image_HE,
+    DarkChannel,
+    DarkChannelWater,
+    AtmLight,
+    TransmissionEstimate,
+    Guidedfilter,
+    TransmissionRefine,
+    Recover,
+    atm_calculation,
+    water_calculation,
+    process_image_dehaze,
+    denoise_image,
+    denoise_batch,
+    tenengrad_contrast,
+    init_motion_detector,
+    detect_moving_subjects,
+    annotate_detections,
+)
+
+__all__ = [
+    "Float2BGR",
+    "BGR2Float",
+    "AnalyseHisto",
+    "PlotHistogram",
+    "process_image_HE",
+    "DarkChannel",
+    "DarkChannelWater",
+    "AtmLight",
+    "TransmissionEstimate",
+    "Guidedfilter",
+    "TransmissionRefine",
+    "Recover",
+    "atm_calculation",
+    "water_calculation",
+    "process_image_dehaze",
+    "denoise_image",
+    "denoise_batch",
+    "tenengrad_contrast",
+    "init_motion_detector",
+    "detect_moving_subjects",
+    "annotate_detections",
+]
