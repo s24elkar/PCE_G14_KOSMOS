@@ -1,0 +1,224 @@
+"""
+Composant Explorateur de Média
+Affiche une liste de miniatures vidéo avec scrollbar
+"""
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+                             QScrollArea, QFrame, QPushButton)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QPixmap, QColor
+
+
+class MediaThumbnail(QWidget):
+    """Widget représentant une miniature vidéo"""
+    
+    clicked = pyqtSignal(str)  # Émet le nom de la vidéo
+    
+    def __init__(self, video_name, thumbnail_color=None, parent=None):
+        super().__init__(parent)
+        self.video_name = video_name
+        self.is_selected = False
+        self.thumbnail_color = thumbnail_color or "#00CBA9"
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
+        
+        # Zone de la miniature (placeholder coloré)
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setFixedSize(150, 100)
+        self.thumbnail_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {self.thumbnail_color};
+                border: 2px solid #333;
+                border-radius: 4px;
+            }}
+        """)
+        self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.thumbnail_label)
+        
+        # Nom de la vidéo
+        name_label = QLabel(self.video_name)
+        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 12px;
+                font-weight: 500;
+            }
+        """)
+        layout.addWidget(name_label)
+        
+        self.setLayout(layout)
+        
+    def mousePressEvent(self, event):
+        """Gère le clic sur la miniature"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.video_name)
+            
+    def set_selected(self, selected):
+        """Change l'état de sélection"""
+        self.is_selected = selected
+        if selected:
+            self.thumbnail_label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {self.thumbnail_color};
+                    border: 3px solid #2196F3;
+                    border-radius: 4px;
+                }}
+            """)
+        else:
+            self.thumbnail_label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {self.thumbnail_color};
+                    border: 2px solid #333;
+                    border-radius: 4px;
+                }}
+            """)
+
+
+class MediaExplorer(QWidget):
+    """
+    Composant Explorateur de Média
+    Affiche une liste scrollable de vidéos
+    """
+    
+    video_selected = pyqtSignal(str)  # Émet le nom de la vidéo sélectionnée
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.thumbnails = []
+        self.selected_thumbnail = None
+        self.init_ui()
+        
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # En-tête
+        header = QLabel("Explorateur de media")
+        header.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                color: black;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 10px;
+                border-bottom: 2px solid #ddd;
+            }
+        """)
+        main_layout.addWidget(header)
+        
+        # Zone scrollable pour les miniatures
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: black;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #1a1a1a;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #4a4a4a;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #5a5a5a;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+        
+        # Container pour les miniatures
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout()
+        self.content_layout.setContentsMargins(10, 10, 10, 10)
+        self.content_layout.setSpacing(15)
+        self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        self.content_widget.setLayout(self.content_layout)
+        self.content_widget.setStyleSheet("background-color: black;")
+        
+        scroll_area.setWidget(self.content_widget)
+        main_layout.addWidget(scroll_area)
+        
+        self.setLayout(main_layout)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: black;
+                border: 2px solid white;
+            }
+        """)
+        
+    def add_video(self, video_name, thumbnail_color=None):
+        """
+        Ajoute une vidéo à l'explorateur
+        
+        Args:
+            video_name: Nom de la vidéo
+            thumbnail_color: Couleur de la miniature (hex)
+        """
+        thumbnail = MediaThumbnail(video_name, thumbnail_color)
+        thumbnail.clicked.connect(self.on_thumbnail_clicked)
+        self.thumbnails.append(thumbnail)
+        self.content_layout.addWidget(thumbnail)
+        
+    def on_thumbnail_clicked(self, video_name):
+        """Gère le clic sur une miniature"""
+        # Désélectionner l'ancienne miniature
+        if self.selected_thumbnail:
+            self.selected_thumbnail.set_selected(False)
+        
+        # Sélectionner la nouvelle
+        for thumb in self.thumbnails:
+            if thumb.video_name == video_name:
+                thumb.set_selected(True)
+                self.selected_thumbnail = thumb
+                break
+        
+        self.video_selected.emit(video_name)
+        
+    def clear_videos(self):
+        """Supprime toutes les vidéos"""
+        for thumb in self.thumbnails:
+            self.content_layout.removeWidget(thumb)
+            thumb.deleteLater()
+        self.thumbnails.clear()
+        self.selected_thumbnail = None
+
+
+# Exemple d'utilisation
+if __name__ == '__main__':
+    import sys
+    from PyQt6.QtWidgets import QApplication, QMainWindow
+    
+    app = QApplication(sys.argv)
+    
+    window = QMainWindow()
+    window.setGeometry(100, 100, 400, 600)
+    window.setStyleSheet("background-color: #2a2a2a;")
+    
+    explorer = MediaExplorer()
+    
+    # Ajouter des vidéos de test
+    explorer.add_video("Video_1", "#00CBA9")
+    explorer.add_video("Video_2", "#D4A574")
+    explorer.add_video("Video_3", "#FF6B6B")
+    explorer.add_video("Video_4", "#4ECDC4")
+    
+    # Connecter le signal
+    explorer.video_selected.connect(lambda name: print(f"Vidéo sélectionnée: {name}"))
+    
+    window.setCentralWidget(explorer)
+    window.show()
+    
+    sys.exit(app.exec())

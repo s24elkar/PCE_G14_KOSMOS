@@ -99,3 +99,4 @@ class EventForm(QWidget):
             "end": end_sec
         })
         self.close()
+
