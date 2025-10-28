@@ -121,3 +121,29 @@ class ApercuVideos(QWidget):
                 self.charger_videos()
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Impossible de supprimer la vidéo : {e}")
+
+    # --- Aperçu vidéo
+    if __name__ == '__main__':
+    import sys
+    from PyQt6.QtWidgets import QApplication, QMainWindow
+
+    app = QApplication(sys.argv)
+    
+    window = QMainWindow()
+    window.setGeometry(100, 100, 900, 600)
+    window.setWindowTitle("Test - Aperçu des vidéos")
+    window.setStyleSheet("background-color: #2a2a2a;")
+    
+    # Création du composant d’aperçu
+    apercu = ApercuVideos()
+    
+    # Exemple : connexion des signaux pour tests
+    apercu.videoSelectionnee.connect(lambda nom: print(f"🎥 Vidéo sélectionnée : {nom}"))
+    apercu.videoRenommee.connect(lambda ancien, nouveau: print(f"✏️ {ancien} renommée en {nouveau}"))
+    apercu.videoSupprimee.connect(lambda nom: print(f"🗑️ Vidéo supprimée : {nom}"))
+    
+    window.setCentralWidget(apercu)
+    window.show()
+    
+    sys.exit(app.exec())
+
