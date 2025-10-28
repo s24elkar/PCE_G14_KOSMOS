@@ -5,8 +5,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, QSize
 import os
+import sys
 
-from lecteur import LecteurVideo  # Réutilisation de ton composant existant
+# from lecteur import LecteurVideo  # Réutilisation de ton composant existant
 
 
 class ApercuVideos(QWidget):
@@ -124,26 +125,25 @@ class ApercuVideos(QWidget):
 
     # --- Aperçu vidéo
     if __name__ == '__main__':
-    import sys
-    from PyQt6.QtWidgets import QApplication, QMainWindow
+        from PyQt6.QtWidgets import QApplication, QMainWindow
 
     app = QApplication(sys.argv)
-    
+        
     window = QMainWindow()
     window.setGeometry(100, 100, 900, 600)
     window.setWindowTitle("Test - Aperçu des vidéos")
     window.setStyleSheet("background-color: #2a2a2a;")
-    
-    # Création du composant d’aperçu
+        
+        # Création du composant d’aperçu
     apercu = ApercuVideos()
-    
-    # Exemple : connexion des signaux pour tests
+        
+        # Exemple : connexion des signaux pour tests
     apercu.videoSelectionnee.connect(lambda nom: print(f"🎥 Vidéo sélectionnée : {nom}"))
     apercu.videoRenommee.connect(lambda ancien, nouveau: print(f"✏️ {ancien} renommée en {nouveau}"))
     apercu.videoSupprimee.connect(lambda nom: print(f"🗑️ Vidéo supprimée : {nom}"))
-    
+        
     window.setCentralWidget(apercu)
     window.show()
-    
+        
     sys.exit(app.exec())
 

@@ -4,8 +4,8 @@ Lecteur avec timeline, contrôles et affichage des métadonnées
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QSlider, QFrame)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect
+from PyQt6.QtGui import QColor, QPalette, QPainter, QPen
 
 
 class MetadataOverlay(QWidget):
@@ -19,16 +19,18 @@ class MetadataOverlay(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        layout.setSpacing(2)
         
-        # Style pour les labels
+        # Style pour les labels - fond rose semi-transparent
         label_style = """
             QLabel {
                 color: white;
-                font-size: 13px;
-                font-weight: 500;
-                background-color: rgba(255, 105, 180, 0.8);
-                padding: 2px 8px;
-                border-radius: 3px;
+                font-size: 14px;
+                font-weight: bold;
+                
+                padding: 3px 10px;
+                border-radius: 0px;
+                font-family: Arial;
             }
         """
         
@@ -79,55 +81,94 @@ class VideoTimeline(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.markers = []  # Positions des marqueurs (0-100)
+        self.current_value = 0
         self.init_ui()
         
     def init_ui(self):
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 5, 0, 5)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         
-        # Slider personnalisé
+        # Slider personnalisé (invisible, juste pour la logique)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(1000)
         self.slider.setValue(0)
+        self.slider.valueChanged.connect(self._on_value_changed)
+        self.slider.setFixedHeight(30)
+        
+        # Style du slider avec marqueurs
         self.slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                background: #1a1a1a;
-                height: 8px;
-                border-radius: 4px;
+                background: #2a2a2a;
+                height: 6px;
+                border-radius: 3px;
+                margin: 0px;
             }
             QSlider::handle:horizontal {
                 background: white;
-                border: 2px solid #2196F3;
-                width: 18px;
-                height: 18px;
-                margin: -6px 0;
-                border-radius: 9px;
+                border: none;
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
             }
             QSlider::handle:horizontal:hover {
-                background: #2196F3;
+                background: #e0e0e0;
             }
         """)
-        self.slider.valueChanged.connect(self.position_changed.emit)
         
         layout.addWidget(self.slider)
         self.setLayout(layout)
         
-        # Ajouter des marqueurs par défaut
-        self.add_marker(15)
-        self.add_marker(30)
-        self.add_marker(45)
-        self.add_marker(60)
-        self.add_marker(75)
+        # Ajouter des marqueurs par défaut (positions en pourcentage)
+        #self.add_marker(15)
+        #self.add_marker(30)
+        #self.add_marker(50)
+        #self.add_marker(70)
+        #self.add_marker(85)
+        
+    def _on_value_changed(self, value):
+        """Gère le changement de valeur"""
+        self.current_value = value
+        self.update()
+        self.position_changed.emit(value)
+        
+    def paintEvent(self, event):
+        """Dessine les marqueurs rouges sur la timeline"""
+        super().paintEvent(event)
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Récupérer les dimensions du groove
+        groove_rect = self.slider.geometry()
+        groove_y = groove_rect.height() // 2
+        groove_left = 10  # Marge gauche
+        groove_right = self.slider.width() - 10  # Marge droite
+        groove_width = groove_right - groove_left
+        
+        # Dessiner les marqueurs rouges
+        for marker_pos in self.markers:
+            # Calculer la position X du marqueur
+            x = groove_left + (marker_pos / 100.0) * groove_width
+            
+            # Dessiner un petit rectangle rouge
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 0, 0))
+            marker_rect = QRect(int(x - 2), groove_y - 3, 4, 6)
+            painter.drawRect(marker_rect)
         
     def add_marker(self, position):
         """Ajoute un marqueur à une position (0-100)"""
         if 0 <= position <= 100:
             self.markers.append(position)
+            self.update()
             
     def clear_markers(self):
         """Supprime tous les marqueurs"""
         self.markers.clear()
+        self.update()
         
     def get_position(self):
         """Retourne la position actuelle (0-1000)"""
@@ -154,22 +195,24 @@ class VideoControls(QWidget):
         
     def init_ui(self):
         layout = QHBoxLayout()
-        layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(5)
+        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setSpacing(15)
         
-        # Style des boutons
+        # Style des boutons - fond gris foncé avec bordure
         button_style = """
             QPushButton {
-                background-color: transparent;
+                background-color: #2a2a2a;
                 color: white;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 8px 12px;
-                font-size: 14px;
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 8px 15px;
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 40px;
             }
             QPushButton:hover {
-                background-color: #2a2a2a;
-                border-color: #666;
+                background-color: #3a3a3a;
+                border-color: #777;
             }
             QPushButton:pressed {
                 background-color: #1a1a1a;
@@ -178,34 +221,37 @@ class VideoControls(QWidget):
         
         # Bouton précédent
         self.prev_btn = QPushButton("⏮")
+        self.prev_btn.setFixedSize(45, 35)
         self.prev_btn.setStyleSheet(button_style)
         self.prev_btn.clicked.connect(self.previous_clicked.emit)
         layout.addWidget(self.prev_btn)
         
         # Bouton reculer 10s
         self.rewind_btn = QPushButton("-10s")
+        self.rewind_btn.setFixedSize(55, 35)
         self.rewind_btn.setStyleSheet(button_style)
         self.rewind_btn.clicked.connect(self.rewind_clicked.emit)
         layout.addWidget(self.rewind_btn)
         
-        # Bouton play/pause
+        # Bouton play/pause (plus grand)
         self.play_pause_btn = QPushButton("▶")
-        self.play_pause_btn.setStyleSheet(button_style)
+        self.play_pause_btn.setFixedSize(45, 35)
+        self.play_pause_btn.setStyleSheet(button_style + """
+            QPushButton {
+                font-size: 16px;
+            }
+        """)
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)
         layout.addWidget(self.play_pause_btn)
         
         # Bouton avancer 10s
         self.forward_btn = QPushButton("+10s")
+        self.forward_btn.setFixedSize(55, 35)
         self.forward_btn.setStyleSheet(button_style)
         self.forward_btn.clicked.connect(self.forward_clicked.emit)
         layout.addWidget(self.forward_btn)
         
-        # Bouton suivant
-        self.next_btn = QPushButton("⏭")
-        self.next_btn.setStyleSheet(button_style)
-        self.next_btn.clicked.connect(self.next_clicked.emit)
-        layout.addWidget(self.next_btn)
-        
+        # Espacement
         layout.addStretch()
         
         self.setLayout(layout)
@@ -238,18 +284,24 @@ class VideoPlayer(QWidget):
         main_layout.setSpacing(0)
         
         # Zone vidéo avec overlay
-        video_container = QWidget()
+        video_container = QFrame()
         video_container.setMinimumHeight(400)
+        video_container.setStyleSheet("""
+            QFrame {
+                background-color: black;
+                border: 3px solid black;
+            }
+        """)
         video_layout = QVBoxLayout()
         video_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Frame vidéo (placeholder avec image de fond simulée)
+        # Frame vidéo (placeholder avec dégradé)
         self.video_frame = QLabel()
         self.video_frame.setStyleSheet("""
             QLabel {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #4a5568, stop:0.5 #667c99, stop:1 #8ba3c7);
-                border: 2px solid white;
+                border: none;
             }
         """)
         self.video_frame.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -257,18 +309,40 @@ class VideoPlayer(QWidget):
         # Overlay de métadonnées
         self.metadata_overlay = MetadataOverlay(self.video_frame)
         
+        # Bouton plein écran en bas à droite
+        self.fullscreen_btn = QPushButton("⛶")
+        self.fullscreen_btn.setFixedSize(35, 35)
+        self.fullscreen_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(42, 42, 42, 200);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 100);
+                border-radius: 5px;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(58, 58, 58, 220);
+                border-color: rgba(255, 255, 255, 150);
+            }
+        """)
+        self.fullscreen_btn.setParent(self.video_frame)
+        
         video_layout.addWidget(self.video_frame)
         video_container.setLayout(video_layout)
         
         main_layout.addWidget(video_container)
         
-        # Timeline
-        self.timeline = VideoTimeline()
-        self.timeline.position_changed.connect(self.position_changed.emit)
+        # Timeline avec fond noir
         timeline_container = QWidget()
         timeline_layout = QVBoxLayout()
-        timeline_layout.setContentsMargins(10, 0, 10, 0)
+        timeline_layout.setContentsMargins(15, 8, 15, 8)
+        timeline_layout.setSpacing(0)
+        
+        self.timeline = VideoTimeline()
+        self.timeline.position_changed.connect(self.position_changed.emit)
         timeline_layout.addWidget(self.timeline)
+        
         timeline_container.setLayout(timeline_layout)
         timeline_container.setStyleSheet("background-color: black;")
         main_layout.addWidget(timeline_container)
@@ -278,37 +352,25 @@ class VideoPlayer(QWidget):
         self.controls.play_pause_clicked.connect(self.play_pause_clicked.emit)
         main_layout.addWidget(self.controls)
         
-        # Bouton plein écran en bas à droite
-        fullscreen_btn = QPushButton("⛶")
-        fullscreen_btn.setFixedSize(30, 30)
-        fullscreen_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(0, 0, 0, 150);
-                color: white;
-                border: 1px solid white;
-                border-radius: 4px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: rgba(33, 150, 243, 200);
-            }
-        """)
-        fullscreen_btn.setParent(self.video_frame)
-        fullscreen_btn.move(self.video_frame.width() - 40, self.video_frame.height() - 40)
-        
         self.setLayout(main_layout)
+        self.setObjectName("VideoPlayer")
         self.setStyleSheet("""
-            QWidget {
+            #VideoPlayer {
                 background-color: black;
-                border: 2px solid white;
+                border: 3px solid black;
             }
         """)
         
     def resizeEvent(self, event):
-        """Redimensionne l'overlay quand le widget change de taille"""
+        """Redimensionne l'overlay et le bouton plein écran quand le widget change de taille"""
         super().resizeEvent(event)
         if hasattr(self, 'metadata_overlay'):
             self.metadata_overlay.setGeometry(0, 0, self.video_frame.width(), self.video_frame.height())
+        if hasattr(self, 'fullscreen_btn'):
+            # Positionner le bouton en bas à droite
+            btn_x = self.video_frame.width() - self.fullscreen_btn.width() - 10
+            btn_y = self.video_frame.height() - self.fullscreen_btn.height() - 10
+            self.fullscreen_btn.move(btn_x, btn_y)
             
     def update_metadata(self, **kwargs):
         """Met à jour les métadonnées affichées"""
@@ -321,6 +383,14 @@ class VideoPlayer(QWidget):
     def get_position(self):
         """Retourne la position actuelle (0-1000)"""
         return self.timeline.get_position()
+        
+    def add_timeline_marker(self, position):
+        """Ajoute un marqueur rouge sur la timeline (0-100)"""
+        self.timeline.add_marker(position)
+        
+    def clear_timeline_markers(self):
+        """Supprime tous les marqueurs de la timeline"""
+        self.timeline.clear_markers()
 
 
 # Exemple d'utilisation
@@ -331,14 +401,18 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     
     window = QMainWindow()
-    window.setGeometry(100, 100, 900, 600)
-    window.setStyleSheet("background-color: #2a2a2a;")
+    window.setGeometry(100, 100, 700, 500)
+    window.setStyleSheet("background-color: #1a1a1a;")
     
     player = VideoPlayer()
     
     # Connecter les signaux
     player.play_pause_clicked.connect(lambda: print("▶/⏸ Play/Pause"))
     player.position_changed.connect(lambda pos: print(f"Position: {pos}"))
+    player.controls.previous_clicked.connect(lambda: print("⏮ Précédent"))
+    player.controls.next_clicked.connect(lambda: print("⏭ Suivant"))
+    player.controls.rewind_clicked.connect(lambda: print("◀ -10s"))
+    player.controls.forward_clicked.connect(lambda: print("▶ +10s"))
     
     window.setCentralWidget(player)
     window.show()

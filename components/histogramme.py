@@ -133,16 +133,18 @@ class Histogram(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # En-tête
+        # En-tête (TRÈS RÉDUIT)
         header = QLabel("Histogramme")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setFixedHeight(40)  # Hauteur fixe
         header.setStyleSheet("""
             QLabel {
                 background-color: white;
                 color: black;
                 font-size: 14px;
                 font-weight: bold;
-                padding: 10px;
-                border-bottom: 2px solid #ddd;
+                padding: 8px;
+                border-bottom: 1px solid #ddd;
             }
         """)
         main_layout.addWidget(header)
@@ -161,8 +163,9 @@ class Histogram(QWidget):
         main_layout.addWidget(container)
         
         self.setLayout(main_layout)
+        self.setObjectName("Histogram")
         self.setStyleSheet("""
-            QWidget {
+            #Histogram {
                 background-color: black;
                 border: 2px solid white;
             }
@@ -189,7 +192,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     
     window = QMainWindow()
-    window.setGeometry(100, 100, 500, 350)
+    window.setGeometry(100, 100, 430, 400)
     window.setStyleSheet("background-color: #2a2a2a;")
     
     histogram = Histogram()
