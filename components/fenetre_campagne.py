@@ -64,3 +64,14 @@ class FenetreNouvelleCampagne(QDialog):
         # Émission du signal
         self.campagneCreee.emit(nom, chemin)
         self.accept()
+        
+    # --- Exemple d'utilisation
+    if __name__ == '__main__':
+    import sys
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication(sys.argv)
+    fen = FenetreNouvelleCampagne()
+    fen.campagneCreee.connect(lambda nom, chemin: print(f"Nouvelle campagne : {nom} ({chemin})"))
+    fen.exec()
+
