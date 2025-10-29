@@ -30,6 +30,7 @@ class ExtractionButton(QPushButton):
                 text-align: left;
                 font-size: 14px;
                 font-weight: 500;
+                font-family: 'Montserrat';
             }
             QPushButton:hover {
                 background-color: #1a1a1a;
@@ -64,8 +65,10 @@ class ExtractionTools(QWidget):
         
         # En-tête
         header = QLabel("Outils d'extraction")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStyleSheet("""
             QLabel {
+                text-align: center;
                 background-color: white;
                 color: black;
                 font-size: 14px;
@@ -114,6 +117,7 @@ class ExtractionTools(QWidget):
             QWidget {
                 background-color: black;
                 border: 2px solid white;
+                font-family: 'Montserrat';
             }
         """)
 
@@ -126,7 +130,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     
     window = QMainWindow()
-    window.setGeometry(100, 100, 400, 500)
+    window.setGeometry(100, 100, 430, 400)
     window.setStyleSheet("background-color: #2a2a2a;")
     
     tools = ExtractionTools()

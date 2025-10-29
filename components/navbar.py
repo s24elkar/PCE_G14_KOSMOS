@@ -1,10 +1,10 @@
 """
-Composant NavBar réutilisable pour logiciel de dérushage vidéo
+Composant NavBar réutilisable 
 """
 import sys
 from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QPalette, QColor, QFontDatabase
 
 
 class NavBar(QWidget):
@@ -25,6 +25,7 @@ class NavBar(QWidget):
             parent: Widget parent
         """
         super().__init__(parent)
+
         
         # Configuration des onglets
         if tabs is None:
@@ -73,11 +74,12 @@ class NavBar(QWidget):
         
         self.setLayout(layout)
         
-        # Style de la barre de navigation
+        # Style de la barre de navigation - FOND BLANC
         self.setStyleSheet("""
             QWidget {
                 background-color: white;
                 border-bottom: 1px solid #e0e0e0;
+                font-family: 'Montserrat';
             }
         """)
         self.setFixedHeight(50)
@@ -101,7 +103,7 @@ class NavBar(QWidget):
         if is_active:
             style = """
                 QPushButton {
-                    background-color: #2196F3;
+                    background-color: #1DA1FF;
                     color: white;
                     border: none;
                     padding: 8px 20px;
@@ -118,7 +120,7 @@ class NavBar(QWidget):
             style = """
                 QPushButton {
                     background-color: transparent;
-                    color: #333;
+                    color: black;
                     border: none;
                     padding: 8px 20px;
                     font-size: 14px;
@@ -225,7 +227,7 @@ class NavBar(QWidget):
         clicked_btn.setChecked(True)
         clicked_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2196F3;
+                background-color: #1DA1FF;
                 color: white;
                 border: none;
                 padding: 8px 20px;
@@ -355,7 +357,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     
     # Configuration de la police par défaut
-    font = QFont("Segoe UI", 10)
+    font = QFont("Montserrat", 10)
     app.setFont(font)
     
     window = MainWindow()

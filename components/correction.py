@@ -62,8 +62,9 @@ class LabeledSlider(QWidget):
         label.setStyleSheet("""
             QLabel {
                 color: white;
-                font-size: 13px;
+                font-size: 14px;
                 font-weight: 500;
+                font-family: 'Montserrat';
             }
         """)
         layout.addWidget(label)
@@ -77,7 +78,8 @@ class LabeledSlider(QWidget):
             QSlider::groove:horizontal {
                 background: #2a2a2a;
                 height: 6px;
-                border-radius: 3px;
+                border-radius: 8px;
+                border: none;
             }
             QSlider::handle:horizontal {
                 background: white;
@@ -86,9 +88,11 @@ class LabeledSlider(QWidget):
                 height: 16px;
                 margin: -6px 0;
                 border-radius: 8px;
+                border: none;
             }
             QSlider::handle:horizontal:hover {
                 background: #2196F3;
+                border: none;
             }
         """)
         self.slider.valueChanged.connect(self.value_changed.emit)
@@ -131,6 +135,7 @@ class ImageCorrection(QWidget):
         
         # En-tête
         header = QLabel("Correction des images")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStyleSheet("""
             QLabel {
                 background-color: white;
@@ -139,6 +144,7 @@ class ImageCorrection(QWidget):
                 font-weight: bold;
                 padding: 10px;
                 border-bottom: 2px solid #ddd;
+                font-family: 'Montserrat';
             }
         """)
         main_layout.addWidget(header)
@@ -172,8 +178,9 @@ class ImageCorrection(QWidget):
         main_layout.addWidget(controls_container)
         
         self.setLayout(main_layout)
+        self.setObjectName("imageCorrection")
         self.setStyleSheet("""
-            QWidget {
+            #imageCorrection {
                 background-color: black;
                 border: 2px solid white;
             }
@@ -209,7 +216,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     
     window = QMainWindow()
-    window.setGeometry(100, 100, 450, 400)
+    window.setGeometry(100, 100, 430, 400)
     window.setStyleSheet("background-color: #2a2a2a;")
     
     correction = ImageCorrection()

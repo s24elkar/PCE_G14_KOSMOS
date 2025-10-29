@@ -3,7 +3,7 @@ Composant Explorateur de Média
 Affiche une liste de miniatures vidéo avec scrollbar
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QScrollArea, QFrame, QPushButton)
+                             QScrollArea, QFrame, QPushButton, QGridLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QColor
 
@@ -38,9 +38,9 @@ class MediaThumbnail(QWidget):
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.thumbnail_label)
         
-        # Nom de la vidéo
+        # Nom de la vidéo (CENTRÉ)
         name_label = QLabel(self.video_name)
-        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # ← Changé de AlignLeft à AlignCenter
         name_label.setStyleSheet("""
             QLabel {
                 color: white;
@@ -51,6 +51,14 @@ class MediaThumbnail(QWidget):
         layout.addWidget(name_label)
         
         self.setLayout(layout)
+        
+        # Retirer les bordures du widget thumbnail
+        self.setStyleSheet("""
+            MediaThumbnail {
+                background-color: transparent;
+                border: none;
+            }
+        """)
         
     def mousePressEvent(self, event):
         """Gère le clic sur la miniature"""
@@ -81,7 +89,7 @@ class MediaThumbnail(QWidget):
 class MediaExplorer(QWidget):
     """
     Composant Explorateur de Média
-    Affiche une liste scrollable de vidéos
+    Affiche une liste scrollable de vidéos (2 par ligne)
     """
     
     video_selected = pyqtSignal(str)  # Émet le nom de la vidéo sélectionnée
@@ -99,6 +107,7 @@ class MediaExplorer(QWidget):
         
         # En-tête
         header = QLabel("Explorateur de media")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStyleSheet("""
             QLabel {
                 background-color: white;
@@ -118,10 +127,10 @@ class MediaExplorer(QWidget):
         scroll_area.setStyleSheet("""
             QScrollArea {
                 background-color: black;
-                border: none;
+                border: 2px solid white;
             }
             QScrollBar:vertical {
-                background-color: #1a1a1a;
+                background-color: white;
                 width: 12px;
                 border-radius: 6px;
             }
@@ -140,7 +149,9 @@ class MediaExplorer(QWidget):
         
         # Container pour les miniatures
         self.content_widget = QWidget()
-        self.content_layout = QVBoxLayout()
+        
+        # CHANGEMENT: Utiliser QGridLayout au lieu de QVBoxLayout pour avoir 2 colonnes
+        self.content_layout = QGridLayout()
         self.content_layout.setContentsMargins(10, 10, 10, 10)
         self.content_layout.setSpacing(15)
         self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -152,8 +163,9 @@ class MediaExplorer(QWidget):
         main_layout.addWidget(scroll_area)
         
         self.setLayout(main_layout)
+        self.setObjectName("mediaExplorer")
         self.setStyleSheet("""
-            QWidget {
+            #mediaExplorer {
                 background-color: black;
                 border: 2px solid white;
             }
@@ -170,7 +182,13 @@ class MediaExplorer(QWidget):
         thumbnail = MediaThumbnail(video_name, thumbnail_color)
         thumbnail.clicked.connect(self.on_thumbnail_clicked)
         self.thumbnails.append(thumbnail)
-        self.content_layout.addWidget(thumbnail)
+        
+        # Calculer la position dans la grille (2 colonnes)
+        index = len(self.thumbnails) - 1
+        row = index // 2  # Ligne (division entière)
+        col = index % 2   # Colonne (0 ou 1)
+        
+        self.content_layout.addWidget(thumbnail, row, col)
         
     def on_thumbnail_clicked(self, video_name):
         """Gère le clic sur une miniature"""
@@ -204,16 +222,18 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     
     window = QMainWindow()
-    window.setGeometry(100, 100, 400, 600)
+    window.setGeometry(100, 100, 400, 500)
     window.setStyleSheet("background-color: #2a2a2a;")
     
     explorer = MediaExplorer()
     
-    # Ajouter des vidéos de test
+    # Ajouter des vidéos de test (maintenant affichées 2 par ligne)
     explorer.add_video("Video_1", "#00CBA9")
     explorer.add_video("Video_2", "#D4A574")
     explorer.add_video("Video_3", "#FF6B6B")
     explorer.add_video("Video_4", "#4ECDC4")
+    explorer.add_video("Video_5", "#9B59B6")
+    explorer.add_video("Video_6", "#F39C12")
     
     # Connecter le signal
     explorer.video_selected.connect(lambda name: print(f"Vidéo sélectionnée: {name}"))
