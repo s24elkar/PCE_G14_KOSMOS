@@ -25,6 +25,11 @@ from .algos_correction import (
     detect_moving_subjects,
     annotate_detections,
 )
+from .deepsea_enhancer import (
+    DeepSeaEnhancer,
+    DeepSeaEnhancerConfig,
+    DeepSeaEnhancerResult,
+)
 
 __all__ = [
     "Float2BGR",
@@ -48,4 +53,7 @@ __all__ = [
     "init_motion_detector",
     "detect_moving_subjects",
     "annotate_detections",
+    "DeepSeaEnhancer",
+    "DeepSeaEnhancerConfig",
+    "DeepSeaEnhancerResult",
 ]

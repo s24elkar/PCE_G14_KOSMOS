@@ -33,6 +33,7 @@ class ExtractionView(QWidget):
     """
 
     requestOpenMedia = pyqtSignal()
+    requestEnhanceImage = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -47,11 +48,13 @@ class ExtractionView(QWidget):
         self.playback_bar = PlaybackBar(self)
 
         self.open_button = QPushButton("Ouvrir...", self)
+        self.enhance_button = QPushButton("Améliorer (U-Net)", self)
         self.media_label = QLabel("Aucune selection", self)
         self.media_label.setObjectName("mediaLabel")
 
         header = QHBoxLayout()
         header.addWidget(self.open_button)
+        header.addWidget(self.enhance_button)
         header.addWidget(self.media_label, stretch=1)
 
         self.info_label_duration = QLabel("Duree : --:--", self)
@@ -74,6 +77,7 @@ class ExtractionView(QWidget):
 
     def _connect_signals(self) -> None:
         self.open_button.clicked.connect(self.requestOpenMedia.emit)
+        self.enhance_button.clicked.connect(self.requestEnhanceImage.emit)
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -115,6 +119,38 @@ class ExtractionView(QWidget):
             "Fichiers vidéo (*.mp4 *.mov *.avi *.mkv);;Tous les fichiers (*)",
         )
         return filename
+
+    def prompt_image(self, parent: QWidget) -> str:
+        """
+        Helper to select a still image for U-Net enhancement.
+        """
+        filename, _ = QFileDialog.getOpenFileName(
+            parent,
+            "Choisir une image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;Tous les fichiers (*)",
+        )
+        return filename
+
+    def show_enhancement_summary(
+        self,
+        *,
+        width: int,
+        height: int,
+        latency_ms: Optional[float],
+        engine: Optional[str],
+    ) -> None:
+        """
+        Update the info bar to reflect the latest U-Net inference metadata.
+        """
+        if latency_ms is not None:
+            self.info_label_duration.setText(f"Latence : {latency_ms:.1f} ms")
+        else:
+            self.info_label_duration.setText("Latence : -")
+
+        self.info_label_position.setText("Mode : Image")
+        self.info_label_resolution.setText(f"Resolution : {width} x {height}")
+        self.info_label_fps.setText(f"Moteur : {engine or 'U-Net'}")
 
     @staticmethod
     def _format_ms(value: int) -> str:
