@@ -1,13 +1,21 @@
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QPushButton, QLineEdit, QGridLayout
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QWidget,
+    QPushButton,
+    QLineEdit,
+    QGridLayout,
+)
 from PyQt6.QtCore import Qt
 import sys
 
-class Window(QWidget) : 
-    def __init__(self): 
+
+class Window(QWidget):
+    def __init__(self):
         super().__init__()
 
         layout = QGridLayout()
-        layout.setContentsMargins(20,20,20,20)
+        layout.setContentsMargins(20, 20, 20, 20)
         self.setWindowTitle("form1")
         self.setLayout(layout)
 
@@ -26,27 +34,34 @@ class Window(QWidget) :
         button = QPushButton("submit")
         button.setFixedWidth(50)
         button.clicked.connect(self.display)
-        layout.addWidget(button, 2,1, Qt.AlignmentFlag.AlignRight)
-    
-    def display (self) :
+        layout.addWidget(button, 2, 1, Qt.AlignmentFlag.AlignRight)
+
+    def display(self):
         print(self.input1.text())
         print(self.input2.text())
 
-app = QApplication(sys.argv)
 
-app.setStyleSheet("""
-    QWidget {
-        background-color: "green";
-        color: "white";
-    }
+def main() -> int:  # pragma: no cover - manual preview only
+    app = QApplication(sys.argv)
 
-    QLineEdit {
-        background-color: "white";
-        border-radius: 5px;
+    app.setStyleSheet(
+        """
+        QWidget {
+            background-color: "green";
+            color: "white";
         }
-""")
-window = Window()
-window.show()
-sys.exit(app.exec())
 
+        QLineEdit {
+            background-color: "white";
+            border-radius: 5px;
+        }
+        """
+    )
+    window = Window()
+    window.show()
+    return app.exec()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual preview only
+    sys.exit(main())
 
