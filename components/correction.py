@@ -4,7 +4,7 @@ Contrôles pour correction couleurs, contraste et luminosité
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QSlider, QPushButton)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSignalBlocker
 
 
 class ColorCorrectionButton(QPushButton):
@@ -110,7 +110,9 @@ class LabeledSlider(QWidget):
         
     def reset(self):
         """Remet le slider à sa valeur par défaut"""
+        blocker = QSignalBlocker(self.slider)
         self.slider.setValue(self.default_value)
+        del blocker
 
 
 class ImageCorrection(QWidget):
