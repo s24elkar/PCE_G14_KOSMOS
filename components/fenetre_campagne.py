@@ -46,14 +46,14 @@ class FenetreNouvelleCampagne(QDialog):
         layout.addStretch()
         layout.addWidget(self.button_box)
 
-    # --- Parcourir l’emplacement
     def parcourir_emplacement(self):
+        """Parcourir l'emplacement"""
         chemin = QFileDialog.getExistingDirectory(self, "Choisir un emplacement")
         if chemin:
             self.emp_edit.setText(chemin)
 
-    # --- Validation
     def valider(self):
+        """Validation"""
         nom = self.nom_edit.text().strip()
         chemin = self.emp_edit.text().strip()
 
@@ -64,9 +64,10 @@ class FenetreNouvelleCampagne(QDialog):
         # Émission du signal
         self.campagneCreee.emit(nom, chemin)
         self.accept()
-        
-    # --- Exemple d'utilisation
-    if __name__ == '__main__':
+
+
+# --- Exemple d'utilisation
+if __name__ == '__main__':
     import sys
     from PyQt6.QtWidgets import QApplication
 
@@ -74,4 +75,3 @@ class FenetreNouvelleCampagne(QDialog):
     fen = FenetreNouvelleCampagne()
     fen.campagneCreee.connect(lambda nom, chemin: print(f"Nouvelle campagne : {nom} ({chemin})"))
     fen.exec()
-
