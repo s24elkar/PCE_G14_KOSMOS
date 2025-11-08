@@ -1,8 +1,6 @@
 """
-VUE + CONTRÔLEUR - Page d'accueil KOSMOS (VERSION FINALE)
-Avec menu Fichier : Créer campagne, Ouvrir campagne, Enregistrer, Enregistrer sous
-Couleurs : NavBar blanche, Fond noir
-Architecture MVC
+VUE - Page d'accueil KOSMOS
+Architecture MVC - Vue uniquement
 """
 import sys
 from pathlib import Path
@@ -15,12 +13,15 @@ from PyQt6.QtWidgets import (
     QDialog, QLineEdit, QPushButton, QFileDialog, QMessageBox,
     QFrame, QDialogButtonBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 from PyQt6.QtGui import QFont, QAction
+
+# Import du contrôleur
+from controllers.accueil_controller import AccueilKosmosController
 
 
 # ═══════════════════════════════════════════════════════════════
-# DIALOGUE NOUVELLE CAMPAGNE (VOTRE VERSION)
+# DIALOGUE NOUVELLE CAMPAGNE
 # ═══════════════════════════════════════════════════════════════
 
 class FenetreNouvelleCampagne(QDialog):
@@ -188,10 +189,7 @@ class FenetreNouvelleCampagne(QDialog):
 # ═══════════════════════════════════════════════════════════════
 
 class NavBarAvecMenu(QWidget):
-    """
-    NavBar avec menu déroulant sur "Fichier"
-    FOND BLANC FORCÉ
-    """
+    """NavBar avec menu déroulant sur "Fichier" - FOND BLANC FORCÉ"""
     
     tab_changed = pyqtSignal(str)
     nouvelle_campagne_clicked = pyqtSignal()
@@ -208,7 +206,7 @@ class NavBarAvecMenu(QWidget):
             self.tabs = tabs
             
         self.default_tab = default_tab if default_tab else self.tabs[0]
-        self.disable_tabs = disable_tabs  # Si True, seul "Fichier" est cliquable
+        self.disable_tabs = disable_tabs
         self.drag_position = None
         self.tab_buttons = {}
         
@@ -219,22 +217,18 @@ class NavBarAvecMenu(QWidget):
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(0)
         
-        # Créer les boutons de navigation
         for tab_name in self.tabs:
             is_active = (tab_name == self.default_tab)
             btn = self.create_nav_button(tab_name, is_active)
             self.tab_buttons[tab_name] = btn
             layout.addWidget(btn)
             
-            # Si c'est "Fichier", créer le menu déroulant
             if tab_name == "Fichier":
                 self.fichier_btn = btn
                 self.create_fichier_menu()
         
-        # Stretch pour pousser les contrôles à droite
         layout.addStretch()
         
-        # Boutons de contrôle de fenêtre
         minimize_btn = self.create_control_button("─", self.minimize_window, "#e0e0e0")
         layout.addWidget(minimize_btn)
         
@@ -246,14 +240,12 @@ class NavBarAvecMenu(QWidget):
         
         self.setLayout(layout)
         
-        # FORCER le fond blanc avec QPalette (résiste au mode sombre)
         from PyQt6.QtGui import QPalette, QColor
         palette = QPalette()
         palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
         self.setPalette(palette)
         self.setAutoFillBackground(True)
         
-        # Style de la barre - FOND BLANC FORCÉ
         self.setStyleSheet("""
             NavBarAvecMenu {
                 background-color: white;
@@ -269,7 +261,6 @@ class NavBarAvecMenu(QWidget):
         btn.setCheckable(True)
         btn.setChecked(is_active)
         
-        # Si disable_tabs est True et que ce n'est pas "Fichier", désactiver le bouton
         if self.disable_tabs and text != "Fichier":
             btn.setEnabled(False)
             style = """
@@ -323,11 +314,9 @@ class NavBarAvecMenu(QWidget):
         
         btn.setStyleSheet(style)
         
-        # Ne pas changer le curseur si le bouton est désactivé
         if not (self.disable_tabs and text != "Fichier"):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Connecter le clic
         if text != "Fichier":
             btn.clicked.connect(lambda: self.on_tab_clicked(btn))
         else:
@@ -356,24 +345,20 @@ class NavBarAvecMenu(QWidget):
             }
         """)
         
-        # NOUVEAU : Action créer campagne
         action_creer = QAction("Créer campagne", self)
         action_creer.triggered.connect(self.nouvelle_campagne_clicked.emit)
         self.fichier_menu.addAction(action_creer)
         
-        # Action ouvrir campagne
         action_ouvrir = QAction("Ouvrir campagne", self)
         action_ouvrir.triggered.connect(self.ouvrir_campagne_clicked.emit)
         self.fichier_menu.addAction(action_ouvrir)
         
         self.fichier_menu.addSeparator()
         
-        # Action enregistrer
         action_enregistrer = QAction("Enregistrer", self)
         action_enregistrer.triggered.connect(self.enregistrer_clicked.emit)
         self.fichier_menu.addAction(action_enregistrer)
         
-        # Action enregistrer sous
         action_enregistrer_sous = QAction("Enregistrer sous", self)
         action_enregistrer_sous.triggered.connect(self.enregistrer_sous_clicked.emit)
         self.fichier_menu.addAction(action_enregistrer_sous)
@@ -467,93 +452,6 @@ class NavBarAvecMenu(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CONTRÔLEUR
-# ═══════════════════════════════════════════════════════════════
-
-class AccueilKosmosController(QObject):
-    """Contrôleur pour la page d'accueil KOSMOS"""
-    
-    navigation_demandee = pyqtSignal(str)
-    campagne_creee = pyqtSignal(str, str)
-    campagne_ouverte = pyqtSignal(str)
-    
-    def __init__(self, model, parent=None):
-        super().__init__(parent)
-        self.model = model
-    
-    def on_creer_campagne(self, view_parent=None):
-        """Crée une nouvelle campagne"""
-        dialogue = FenetreNouvelleCampagne(view_parent)
-        
-        # Connecter le signal
-        def on_campagne_creee(nom, emplacement):
-            # Créer la campagne dans le modèle
-            campagne = self.model.creer_campagne(nom, emplacement)
-            
-            # Sauvegarder
-            self.model.sauvegarder_campagne()
-            
-            print(f"✅ Campagne créée : {campagne.nom}")
-            
-            # Émettre le signal
-            self.campagne_creee.emit(nom, emplacement)
-            
-            # Naviguer vers la page d'importation
-            self.navigation_demandee.emit('importation')
-        
-        dialogue.campagneCreee.connect(on_campagne_creee)
-        dialogue.exec()
-    
-    def on_ouvrir_campagne(self, view_parent=None):
-        """Ouvre une campagne existante"""
-        chemin_fichier, _ = QFileDialog.getOpenFileName(
-            view_parent,
-            "Ouvrir une campagne",
-            "",
-            "Fichiers JSON (*.json)"
-        )
-        
-        if chemin_fichier:
-            if self.model.ouvrir_campagne(chemin_fichier):
-                print(f"✅ Campagne ouverte : {self.model.campagne_courante.nom}")
-                self.campagne_ouverte.emit(chemin_fichier)
-                self.navigation_demandee.emit('tri')  # Aller directement vers tri
-            else:
-                QMessageBox.critical(view_parent, "Erreur", "Impossible d'ouvrir la campagne.")
-    
-    def on_enregistrer(self, view_parent=None):
-        """Enregistre la campagne courante"""
-        if self.model.campagne_courante:
-            if self.model.sauvegarder_campagne():
-                QMessageBox.information(
-                    view_parent,
-                    "Sauvegarde réussie",
-                    f"Campagne '{self.model.campagne_courante.nom}' sauvegardée."
-                )
-            else:
-                QMessageBox.critical(view_parent, "Erreur", "Impossible de sauvegarder.")
-        else:
-            QMessageBox.warning(view_parent, "Aucune campagne", "Aucune campagne ouverte.")
-    
-    def on_enregistrer_sous(self, view_parent=None):
-        """Enregistre sous un nouveau nom"""
-        if not self.model.campagne_courante:
-            QMessageBox.warning(view_parent, "Aucune campagne", "Aucune campagne ouverte.")
-            return
-        
-        dialogue = FenetreNouvelleCampagne(view_parent)
-        
-        def on_nouvelle_campagne(nom, emplacement):
-            self.model.campagne_courante.nom = nom
-            self.model.campagne_courante.emplacement = emplacement
-            self.model.sauvegarder_campagne()
-            QMessageBox.information(view_parent, "Succès", "Campagne enregistrée sous un nouveau nom.")
-        
-        dialogue.campagneCreee.connect(on_nouvelle_campagne)
-        dialogue.exec()
-
-
-# ═══════════════════════════════════════════════════════════════
 # VUE
 # ═══════════════════════════════════════════════════════════════
 
@@ -571,16 +469,13 @@ class AccueilKosmosView(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # NavBar avec menu (FOND BLANC)
-        # disable_tabs=True pour désactiver Tri, Extraction, Évènements sur la page d'accueil
         self.navbar = NavBarAvecMenu(
             tabs=["Fichier", "Tri", "Extraction", "Évènements"],
             default_tab="Fichier",
-            disable_tabs=True  # ← NOUVEAU : Désactive les autres onglets
+            disable_tabs=True
         )
         main_layout.addWidget(self.navbar)
         
-        # Zone centrale (FOND NOIR)
         content = QFrame()
         content.setStyleSheet("background-color: black;")
         main_layout.addWidget(content)
@@ -592,7 +487,6 @@ class AccueilKosmosView(QWidget):
         if not self.controller:
             return
         
-        # Menu Fichier
         self.navbar.nouvelle_campagne_clicked.connect(
             lambda: self.controller.on_creer_campagne(self)
         )
@@ -615,16 +509,11 @@ if __name__ == '__main__':
     
     sys.path.insert(0, str(Path(__file__).parent))
     
-    # Essayer d'importer le modèle KOSMOS
     try:
-        from app_model_kosmos import ApplicationModel
+        from models.app_model import ApplicationModel
     except ImportError:
-        # Fallback sur le modèle générique
-        try:
-            from models.app_model import ApplicationModel
-        except ImportError:
-            print("❌ Impossible d'importer ApplicationModel")
-            sys.exit(1)
+        print("❌ Impossible d'importer ApplicationModel")
+        sys.exit(1)
     
     app = QApplication(sys.argv)
     font = QFont("Montserrat", 10)
@@ -650,10 +539,5 @@ if __name__ == '__main__':
     
     window.show()
     print("✅ Page d'accueil KOSMOS chargée!")
-    print("📋 Menu Fichier disponible:")
-    print("   • Créer campagne")
-    print("   • Ouvrir campagne")
-    print("   • Enregistrer")
-    print("   • Enregistrer sous")
     
     sys.exit(app.exec())

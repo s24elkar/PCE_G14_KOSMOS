@@ -1,13 +1,9 @@
 """
-VUE + CONTRÔLEUR - Page de tri KOSMOS (VERSION FINALE CORRIGÉE)
-- Extraction de miniatures des vidéos
-- Lecture des métadonnées CSV
-- Modification des métadonnées
-Architecture MVC
+VUE - Page de tri KOSMOS
+Architecture MVC - Vue uniquement
 """
 import sys
 import os
-import csv
 import subprocess
 from pathlib import Path
 
@@ -17,11 +13,13 @@ sys.path.insert(0, str(project_root))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
-    QScrollArea, QGridLayout, QLineEdit, QMenu, QMessageBox
+    QGridLayout, QLineEdit, QMenu, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QPoint, QSize, QThread
-from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QImage
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
+from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap
 
+# Import du contrôleur
+from controllers.tri_controller import TriKosmosController
 
 # ═══════════════════════════════════════════════════════════════
 # EXTRACTION DE MINIATURES (THREAD)
@@ -249,93 +247,6 @@ class NavBarAvecMenu(QWidget):
 # CONTRÔLEUR
 # ═══════════════════════════════════════════════════════════════
 
-class TriKosmosController(QObject):
-    navigation_demandee = pyqtSignal(str)
-    video_selectionnee = pyqtSignal(object)
-    
-    def __init__(self, model, parent=None):
-        super().__init__(parent)
-        self.model = model
-    
-    def obtenir_videos(self):
-        return self.model.obtenir_videos()
-    
-    def selectionner_video(self, nom_video: str):
-        video = self.model.selectionner_video(nom_video)
-        if video:
-            self.video_selectionnee.emit(video)
-    
-    def renommer_video(self, ancien_nom: str, nouveau_nom: str):
-        return self.model.renommer_video(ancien_nom, nouveau_nom)
-    
-    def conserver_video(self, nom_video: str):
-        return self.model.conserver_video(nom_video)
-    
-    def supprimer_video(self, nom_video: str):
-        return self.model.marquer_video_pour_suppression(nom_video)
-    
-    def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict):
-        """Modifie les métadonnées communes (en lecture seule normalement)"""
-        video = self.model.campagne_courante.obtenir_video(nom_video)
-        if video:
-            for key, value in metadonnees.items():
-                if key in video.metadata_communes:
-                    video.metadata_communes[key] = value
-            return self.sauvegarder_csv(video)
-        return False
-    
-    def modifier_metadonnees_propres(self, nom_video: str, metadonnees: dict):
-        """Modifie et sauvegarde les métadonnées propres dans le CSV"""
-        success = self.model.modifier_metadonnees_propres(nom_video, metadonnees)
-        
-        if success:
-            video = self.model.campagne_courante.obtenir_video(nom_video)
-            if video:
-                return self.sauvegarder_csv(video)
-        
-        return success
-    
-    def sauvegarder_csv(self, video):
-        """Sauvegarde les métadonnées dans le fichier CSV"""
-        try:
-            dossier = Path(video.chemin).parent
-            csv_path = dossier / f"{video.dossier_numero}.csv"
-            
-            if not csv_path.exists():
-                print(f"⚠️ CSV non trouvé: {csv_path}")
-                return False
-            
-            # Lire le CSV existant
-            lignes = []
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames
-                
-                for row in reader:
-                    # Mettre à jour les métadonnées communes
-                    for key, value in video.metadata_communes.items():
-                        if key in row:
-                            row[key] = value
-                    
-                    # Mettre à jour les métadonnées propres
-                    for key, value in video.metadata_propres.items():
-                        if key in row:
-                            row[key] = value
-                    
-                    lignes.append(row)
-            
-            # Réécrire le CSV
-            with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(lignes)
-            
-            print(f"✅ CSV sauvegardé: {csv_path}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur sauvegarde CSV: {e}")
-            return False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -519,12 +430,11 @@ class TriKosmosView(QWidget):
     
     def create_metadata_section(self, title, readonly=False, type_meta="communes"):
         container = QFrame()
-        self.setObjectName("metadata_section")
+        container.setObjectName("metadata_section")
         container.setStyleSheet("""
-            #metadata_section {
-                background-color: black;
-                border: 2px solid white;
-            }
+        #metadata_section {
+            background-color: black; border: 2px solid white;
+        }
         """)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
