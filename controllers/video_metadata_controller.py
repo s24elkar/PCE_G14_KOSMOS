@@ -17,6 +17,10 @@ class VideoMetadataController:
 
         self.view.set_specific_metadata_controller(self)
 
+        # Connecte le bouton OK de la vue à la méthode de sauvegarde
+        if hasattr(self.view, "ok_button"):
+            self.view.ok_button.clicked.connect(self.handle_ok_button)
+
     # ------------------------------------------------------------------ #
     # Controller entry points
     # ------------------------------------------------------------------ #
@@ -60,3 +64,23 @@ class VideoMetadataController:
         self.model.delete_metadata(video_name)
         if self._current_video == video_name:
             self.clear_selection()
+
+    # ------------------------------------------------------------------ #
+    # Bouton OK - validation manuelle
+    # ------------------------------------------------------------------ #
+    def handle_ok_button(self) -> None:
+        """
+        Triggered when the OK button is clicked.
+        Saves current metadata if a video is selected.
+        """
+        if not self._current_video:
+            QMessageBox.warning(
+                self.view,
+                "Aucune vidéo sélectionnée",
+                "Veuillez sélectionner une vidéo avant de valider.",
+            )
+            return
+
+        # Récupération des valeurs actuelles depuis la vue
+        payload = self.view.get_specific_metadata_inputs()
+        self.on_specific_metadata_save(self._current_video, payload)
