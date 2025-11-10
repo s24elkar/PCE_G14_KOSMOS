@@ -2,9 +2,11 @@
 VUE - Page de tri KOSMOS
 Architecture MVC - Vue uniquement
 Affiche les 6 angles de la vidéo sélectionnée (toutes les 30s)
+Lecture vidéo au survol + Métadonnées depuis JSON
 """
 import sys
 import os
+import json
 import subprocess
 from pathlib import Path
 
@@ -16,8 +18,10 @@ from PyQt6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
     QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QEvent
 from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
@@ -84,6 +88,95 @@ class DialogueRenommer(QDialog):
     
     def get_nouveau_nom(self):
         return self.nom_edit.text().strip()
+
+
+# ═══════════════════════════════════════════════════════════════
+# WIDGET VIDÉO AVEC PREVIEW AU SURVOL
+# ═══════════════════════════════════════════════════════════════
+
+class VideoPreviewLabel(QLabel):
+    """Label qui affiche une vidéo au survol"""
+    
+    def __init__(self, angle_num, timestamp, parent=None):
+        super().__init__(parent)
+        self.angle_num = angle_num
+        self.timestamp = timestamp
+        self.video_path = None
+        self.hover_active = False
+        
+        # Configuration du label
+        self.setMinimumSize(180, 100)
+        self.setMaximumSize(280, 160)
+        self.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setText("📹")
+        self.setScaledContents(True)
+        
+        # Activer le tracking de la souris
+        self.setMouseTracking(True)
+        
+        # Player vidéo (créé à la demande)
+        self.media_player = None
+        self.video_widget = None
+        self.audio_output = None
+    
+    def set_video_path(self, path):
+        """Définit le chemin de la vidéo pour le preview"""
+        self.video_path = path
+    
+    def enterEvent(self, event):
+        """Survol : démarre la lecture vidéo"""
+        if self.video_path and os.path.exists(self.video_path):
+            self.start_video_preview()
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Sortie survol : arrête la lecture"""
+        self.stop_video_preview()
+        super().leaveEvent(event)
+    
+    def start_video_preview(self):
+        """Démarre la lecture vidéo au timestamp"""
+        try:
+            # Créer le player si nécessaire
+            if not self.media_player:
+                self.media_player = QMediaPlayer()
+                self.audio_output = QAudioOutput()
+                self.audio_output.setVolume(0)  # Muet
+                self.media_player.setAudioOutput(self.audio_output)
+                
+                # Créer le widget vidéo
+                self.video_widget = QVideoWidget()
+                self.video_widget.setStyleSheet("background-color: black;")
+                
+                # Remplacer le layout
+                if self.layout():
+                    QWidget().setLayout(self.layout())
+                
+                layout = QVBoxLayout(self)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.addWidget(self.video_widget)
+                
+                self.media_player.setVideoOutput(self.video_widget)
+            
+            # Charger et lire la vidéo
+            from PyQt6.QtCore import QUrl
+            self.media_player.setSource(QUrl.fromLocalFile(self.video_path))
+            self.media_player.setPosition(self.timestamp * 1000)  # ms
+            self.media_player.play()
+            
+            self.hover_active = True
+            print(f"▶️ Lecture preview angle {self.angle_num} à {self.timestamp}s")
+            
+        except Exception as e:
+            print(f"⚠️ Erreur preview vidéo: {e}")
+    
+    def stop_video_preview(self):
+        """Arrête la lecture vidéo"""
+        if self.media_player and self.hover_active:
+            self.media_player.stop()
+            self.hover_active = False
+            print(f"⏸️ Arrêt preview angle {self.angle_num}")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -389,7 +482,7 @@ class TriKosmosView(QWidget):
         apercu_layout.setContentsMargins(0, 0, 0, 0)
         apercu_layout.setSpacing(0)
         
-        label_apercu = QLabel("Angles de la vidéo (toutes les 30s)")
+        label_apercu = QLabel("Aperçu des vidéos")
         label_apercu.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label_apercu.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white; color: black;")
         apercu_layout.addWidget(label_apercu)
@@ -411,13 +504,8 @@ class TriKosmosView(QWidget):
                 angle_layout.setContentsMargins(0, 0, 0, 0)
                 angle_layout.setSpacing(0)
                 
-                img_label = QLabel()
-                img_label.setMinimumSize(180, 100)
-                img_label.setMaximumSize(280, 160)
-                img_label.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
-                img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                img_label.setText("📹")
-                img_label.setScaledContents(True)
+                # NOUVEAU : Utiliser VideoPreviewLabel au lieu de QLabel
+                img_label = VideoPreviewLabel(angle_num, timestamp)
                 
                 time_label = QLabel(f"Angle {angle_num} - {timestamp}s")
                 time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -479,7 +567,7 @@ class TriKosmosView(QWidget):
         
         if type_meta == "communes":
             self.meta_communes_fields = {}
-            for key in ['System', 'camera', 'Model', 'System ', 'Version']:
+            for key in ['system', 'camera', 'model', 'version']:
                 row = self.create_metadata_row(key, readonly=False)
                 self.meta_communes_fields[key] = row['widget']
                 content_layout.addWidget(row['container'])
@@ -502,7 +590,7 @@ class TriKosmosView(QWidget):
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
             
-            for key in ['Campaign', 'ZoneDict', 'Zone']:
+            for key in ['campaign', 'zone', 'zoneDict']:
                 row = self.create_metadata_row(key, readonly=False)
                 self.meta_propres_fields[key] = row['widget']
                 self.meta_propres_widgets[key] = row['container']
@@ -536,7 +624,7 @@ class TriKosmosView(QWidget):
         
         label = QLabel(f"{key}:")
         label.setStyleSheet("color: white; font-weight: bold; font-size: 10px;")
-        label.setFixedWidth(55)
+        label.setFixedWidth(65)
         row_layout.addWidget(label)
         
         value_widget = QLineEdit()
@@ -570,12 +658,54 @@ class TriKosmosView(QWidget):
             self.table.selectRow(0)
             self.controller.selectionner_video(videos[0].nom)
     
+    def charger_metadata_depuis_json(self, video):
+        """Charge les métadonnées depuis le fichier JSON du dossier"""
+        try:
+            dossier = Path(video.chemin).parent
+            json_path = dossier / f"{video.dossier_numero}.json"
+            
+            if not json_path.exists():
+                print(f"⚠️ Fichier JSON non trouvé: {json_path}")
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # MÉTADONNÉES COMMUNES (system)
+            if 'system' in data:
+                system = data['system']
+                video.metadata_communes['system'] = system.get('system', '')
+                video.metadata_communes['camera'] = system.get('camera', '')
+                video.metadata_communes['model'] = system.get('model', '')
+                video.metadata_communes['version'] = system.get('version', '')
+            
+            # MÉTADONNÉES PROPRES (campaign)
+            if 'campaign' in data:
+                campaign = data['campaign']
+                if 'zoneDict' in campaign:
+                    zone_dict = campaign['zoneDict']
+                    video.metadata_propres['campaign'] = zone_dict.get('campaign', '')
+                    video.metadata_propres['zone'] = zone_dict.get('zone', '')
+                    video.metadata_propres['zone_dict'] = str(zone_dict)
+            
+            print(f"✅ Métadonnées JSON chargées pour {video.nom}")
+            print(f"   Communes: {video.metadata_communes}")
+            print(f"   Propres: {video.metadata_propres}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur lecture JSON: {e}")
+            return False
+    
     def extraire_angles(self, video_path):
         """Lance l'extraction des 6 angles de la vidéo"""
         for label in self.angle_labels:
             label.clear()
             label.setText("⏳")
             label.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
+            # Définir le chemin vidéo pour le preview
+            label.set_video_path(video_path)
         
         if self.angle_extractor and self.angle_extractor.isRunning():
             self.angle_extractor.terminate()
@@ -604,19 +734,23 @@ class TriKosmosView(QWidget):
         self.video_selectionnee = video
         
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
+        
+        # Charger les métadonnées depuis le JSON
+        self.charger_metadata_depuis_json(video)
+        
         print(f"   Métadonnées communes : {video.metadata_communes}")
         print(f"   Métadonnées propres : {video.metadata_propres}")
         
         # Métadonnées communes
-        self.meta_communes_fields['System'].setText(video.metadata_communes.get('system', ''))
+        self.meta_communes_fields['system'].setText(video.metadata_communes.get('system', ''))
         self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
-        self.meta_communes_fields['Model'].setText(video.metadata_communes.get('model', ''))
-        self.meta_communes_fields['Version'].setText(video.metadata_communes.get('version', ''))
+        self.meta_communes_fields['model'].setText(video.metadata_communes.get('model', ''))
+        self.meta_communes_fields['version'].setText(video.metadata_communes.get('version', ''))
         
         # Métadonnées propres
-        self.meta_propres_fields['Campaign'].setText(video.metadata_propres.get('campaign', ''))
-        self.meta_propres_fields['ZoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
-        self.meta_propres_fields['Zone'].setText(video.metadata_propres.get('zone', ''))
+        self.meta_propres_fields['campaign'].setText(video.metadata_propres.get('campaign', ''))
+        self.meta_propres_fields['zone'].setText(video.metadata_propres.get('zone', ''))
+        self.meta_propres_fields['zoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
         
         # Extraire les angles de la vidéo
         self.extraire_angles(video.chemin)
@@ -677,10 +811,10 @@ class TriKosmosView(QWidget):
     def on_modifier_metadata_communes(self):
         if self.video_selectionnee and self.controller:
             nouvelles_meta = {
-                'system': self.meta_communes_fields['System'].text(),
+                'system': self.meta_communes_fields['system'].text(),
                 'camera': self.meta_communes_fields['camera'].text(),
-                'model': self.meta_communes_fields['Model'].text(),
-                'version': self.meta_communes_fields['Version'].text()
+                'model': self.meta_communes_fields['model'].text(),
+                'version': self.meta_communes_fields['version'].text()
             }
             
             if self.controller.modifier_metadonnees_communes(self.video_selectionnee.nom, nouvelles_meta):
@@ -692,9 +826,9 @@ class TriKosmosView(QWidget):
     def on_modifier_metadata_propres(self):
         if self.video_selectionnee and self.controller:
             nouvelles_meta = {
-                'campaign': self.meta_propres_fields['Campaign'].text(),
-                'zone_dict': self.meta_propres_fields['ZoneDict'].text(),
-                'zone': self.meta_propres_fields['Zone'].text()
+                'campaign': self.meta_propres_fields['campaign'].text(),
+                'zone': self.meta_propres_fields['zone'].text(),
+                'zone_dict': self.meta_propres_fields['zoneDict'].text()
             }
             
             if self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta):
