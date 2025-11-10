@@ -244,12 +244,6 @@ class NavBarAvecMenu(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CONTRÔLEUR
-# ═══════════════════════════════════════════════════════════════
-
-
-
-# ═══════════════════════════════════════════════════════════════
 # VUE
 # ═══════════════════════════════════════════════════════════════
 
@@ -337,7 +331,6 @@ class TriKosmosView(QWidget):
         
         for btn_text, callback in [
             ("Renommer", self.on_renommer),
-            ("Conserver", self.on_conserver),
             ("Supprimer", self.on_supprimer)
         ]:
             btn = QPushButton(btn_text)
