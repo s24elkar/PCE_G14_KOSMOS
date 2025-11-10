@@ -19,9 +19,7 @@ from PyQt6.QtWidgets import (
     QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QEvent
-from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
@@ -91,155 +89,176 @@ class DialogueRenommer(QDialog):
 
 
 # ═══════════════════════════════════════════════════════════════
-# WIDGET VIDÉO AVEC PREVIEW AU SURVOL
+# CLASSE WIDGET MINIATURE ANIMÉE (Code branche romain)
 # ═══════════════════════════════════════════════════════════════
 
-class VideoPreviewLabel(QLabel):
-    """Label qui affiche une vidéo au survol"""
-    
-    def __init__(self, angle_num, timestamp, parent=None):
+class AnimatedThumbnailLabel(QLabel):
+    """
+    QLabel personnalisé qui gère l'affichage d'un Pixmap statique
+    et le remplace par un QMovie animé lors du survol.
+    """
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.angle_num = angle_num
-        self.timestamp = timestamp
-        self.video_path = None
-        self.hover_active = False
-        
-        # Configuration du label
-        self.setMinimumSize(180, 100)
-        self.setMaximumSize(280, 160)
-        self.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
+        self.static_pixmap = None
+        self.animated_movie = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setText("📹")
-        self.setScaledContents(True)
-        
-        # Activer le tracking de la souris
-        self.setMouseTracking(True)
-        
-        # Player vidéo (créé à la demande)
-        self.media_player = None
-        self.video_widget = None
-        self.audio_output = None
+        self.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
+        self.setText("🔄")  # Symbole de chargement initial
     
-    def set_video_path(self, path):
-        """Définit le chemin de la vidéo pour le preview"""
-        self.video_path = path
+    def set_static_pixmap(self, pixmap):
+        """Définit l'image statique (miniature)"""
+        self.static_pixmap = pixmap
+        if self.movie() is None:
+            self.setPixmap(self.static_pixmap)
+            self.setText("")
+    
+    def set_animated_movie(self, movie):
+        """Stocke le GIF animé pour une utilisation future"""
+        self.animated_movie = movie
+        if self.animated_movie:
+            self.animated_movie.setCacheMode(QMovie.CacheMode.CacheAll)
     
     def enterEvent(self, event):
-        """Survol : démarre la lecture vidéo"""
-        if self.video_path and os.path.exists(self.video_path):
-            self.start_video_preview()
+        """Souris entre : joue le GIF"""
+        if self.animated_movie:
+            self.setMovie(self.animated_movie)
+            self.animated_movie.start()
         super().enterEvent(event)
     
     def leaveEvent(self, event):
-        """Sortie survol : arrête la lecture"""
-        self.stop_video_preview()
+        """Souris sort : arrête le GIF et remet l'image statique"""
+        if self.animated_movie:
+            self.animated_movie.stop()
+        
+        # Correction anti-plantage (TypeNone)
+        if self.static_pixmap:
+            self.setPixmap(self.static_pixmap)
+        else:
+            self.setPixmap(QPixmap())
+            self.setText("🔄")
+        
         super().leaveEvent(event)
-    
-    def start_video_preview(self):
-        """Démarre la lecture vidéo au timestamp"""
-        try:
-            # Créer le player si nécessaire
-            if not self.media_player:
-                self.media_player = QMediaPlayer()
-                self.audio_output = QAudioOutput()
-                self.audio_output.setVolume(0)  # Muet
-                self.media_player.setAudioOutput(self.audio_output)
-                
-                # Créer le widget vidéo
-                self.video_widget = QVideoWidget()
-                self.video_widget.setStyleSheet("background-color: black;")
-                
-                # Remplacer le layout
-                if self.layout():
-                    QWidget().setLayout(self.layout())
-                
-                layout = QVBoxLayout(self)
-                layout.setContentsMargins(0, 0, 0, 0)
-                layout.addWidget(self.video_widget)
-                
-                self.media_player.setVideoOutput(self.video_widget)
-            
-            # Charger et lire la vidéo
-            from PyQt6.QtCore import QUrl
-            self.media_player.setSource(QUrl.fromLocalFile(self.video_path))
-            self.media_player.setPosition(self.timestamp * 1000)  # ms
-            self.media_player.play()
-            
-            self.hover_active = True
-            print(f"▶️ Lecture preview angle {self.angle_num} à {self.timestamp}s")
-            
-        except Exception as e:
-            print(f"⚠️ Erreur preview vidéo: {e}")
-    
-    def stop_video_preview(self):
-        """Arrête la lecture vidéo"""
-        if self.media_player and self.hover_active:
-            self.media_player.stop()
-            self.hover_active = False
-            print(f"⏸️ Arrêt preview angle {self.angle_num}")
 
 
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DES ANGLES (THREAD)
+# EXTRACTION DE MINIATURES (THREAD) (Code branche romain)
 # ═══════════════════════════════════════════════════════════════
 
-class AngleExtractor(QThread):
-    """Thread pour extraire les 6 angles d'une vidéo (toutes les 30 secondes)"""
-    angle_ready = pyqtSignal(int, QPixmap)
+class PreviewExtractorThread(QThread):
+    """
+    Thread pour extraire une miniature STATIQUE et un GIF ANIMÉ
+    """
+    thumbnail_ready = pyqtSignal(int, QPixmap)
+    # Émet un 'str' (chemin du GIF) au lieu d'un QMovie
+    gif_ready = pyqtSignal(int, str)
     
-    def __init__(self, video_path, parent=None):
+    def __init__(self, video_path, seek_info: list, parent=None):
+        """
+        seek_info est une liste de tuples: [(start_time_str, duration_sec), ...]
+        """
         super().__init__(parent)
         self.video_path = video_path
-        
+        self.seek_info = seek_info 
+        self.temp_dir = Path(video_path).parent / ".thumbnails"
+        self.temp_dir.mkdir(exist_ok=True)
+        self._is_running = True
+
+    def stop(self):
+        self._is_running = False
+
     def run(self):
-        """Extrait les 6 angles"""
-        for idx in range(6):
+        for idx, (seek_time, duration) in enumerate(self.seek_info):
+            if not self._is_running:
+                break
+            
             try:
-                timestamp = idx * 30  # 0, 30, 60, 90, 120, 150 secondes
-                pixmap = self.extract_frame_at_time(self.video_path, timestamp)
-                if pixmap:
-                    self.angle_ready.emit(idx, pixmap)
+                safe_seek_time = seek_time.replace(':', '')
+                thumb_path = self.temp_dir / f"thumb_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.jpg"
+                
+                pixmap = self.extract_thumbnail(seek_time, thumb_path)
+                if pixmap and self._is_running:
+                    self.thumbnail_ready.emit(idx, pixmap)
+                
+                gif_path = self.temp_dir / f"gif_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.gif"
+                
+                movie_success = self.extract_gif(seek_time, duration, gif_path)
+                
+                # Émet le chemin (str) si succès
+                if movie_success and self._is_running:
+                    self.gif_ready.emit(idx, str(gif_path))
+
             except Exception as e:
-                print(f"⚠️ Erreur extraction angle {idx+1}: {e}")
-    
-    def extract_frame_at_time(self, video_path, timestamp):
-        """Extrait une frame à un timestamp donné"""
-        if not os.path.exists(video_path):
-            print(f"⚠️ Fichier vidéo non trouvé: {video_path}")
-            return None
-        
-        try:
-            temp_dir = Path(video_path).parent / ".angles"
-            temp_dir.mkdir(exist_ok=True)
-            
-            angle_path = temp_dir / f"angle_{Path(video_path).stem}_{timestamp}s.jpg"
-            
-            if angle_path.exists():
-                pixmap = QPixmap(str(angle_path))
-                if not pixmap.isNull():
-                    return pixmap
-            
-            hours = timestamp // 3600
-            minutes = (timestamp % 3600) // 60
-            seconds = timestamp % 60
-            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            
-            cmd = ['ffmpeg', '-i', video_path, '-ss', time_str, '-vframes', '1', '-vf', 'scale=320:-1', '-y', str(angle_path)]
-            
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
-            
-            if result.returncode == 0 and angle_path.exists():
-                pixmap = QPixmap(str(angle_path))
+                print(f"⚠️ Erreur extraction preview {idx}: {e}")
+
+    def extract_thumbnail(self, seek_time, output_path):
+        if output_path.exists():
+            pixmap = QPixmap(str(output_path))
+            if not pixmap.isNull():
                 return pixmap
-            
-        except subprocess.TimeoutExpired:
-            print(f"⚠️ Timeout extraction angle")
-        except FileNotFoundError:
-            print(f"⚠️ ffmpeg non trouvé")
-        except Exception as e:
-            print(f"⚠️ Erreur: {e}")
         
+        cmd = [
+            'ffmpeg', '-ss', seek_time, '-i', self.video_path,
+            '-vframes', '1', '-vf', 'scale=320:-1', 
+            '-q:v', '3', '-y', str(output_path)
+        ]
+        try:
+            result = subprocess.run(cmd, 
+                                    stdout=subprocess.DEVNULL, 
+                                    stderr=subprocess.PIPE, 
+                                    timeout=5, 
+                                    text=True, 
+                                    encoding='utf-8')
+            if result.returncode != 0:
+                print(f"❌ Erreur FFmpeg (thumb) - Commande: {' '.join(cmd)}")
+                print(f"   Erreur: {result.stderr}")
+
+            if output_path.exists():
+                return QPixmap(str(output_path))
+        except FileNotFoundError:
+             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
+             self.stop()
+        except Exception as e:
+            print(f"Erreur Python (thumb): {e}")
         return None
+
+    def extract_gif(self, seek_time, duration: int, output_path) -> bool:
+        if output_path.exists():
+            temp_movie = QMovie(str(output_path))
+            if temp_movie.isValid():
+                return True
+        
+        # Filtre vidéo : fps=10, scale=320px, et setpts=0.5*PTS (accélération x2)
+        video_filter = f'fps=10,scale=320:-1:flags=lanczos,setpts=0.5*PTS'
+        
+        cmd = [
+            'ffmpeg',
+            '-ss', seek_time,
+            '-t', str(duration),
+            '-i', self.video_path,
+            '-vf', video_filter,
+            '-y',
+            str(output_path)
+        ]
+        try:
+            result = subprocess.run(cmd, 
+                                    stdout=subprocess.DEVNULL, 
+                                    stderr=subprocess.PIPE, 
+                                    timeout=15, 
+                                    text=True, 
+                                    encoding='utf-8')
+            if result.returncode != 0:
+                print(f"❌ Erreur FFmpeg (gif) - Commande: {' '.join(cmd)}")
+                print(f"   Erreur: {result.stderr}")
+                return False
+            
+            if output_path.exists():
+                return True
+        except FileNotFoundError:
+             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
+             self.stop()
+        except Exception as e:
+            print(f"Erreur Python (gif): {e}")
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -397,7 +416,9 @@ class TriKosmosView(QWidget):
         super().__init__(parent)
         self.controller = controller
         self.video_selectionnee = None
-        self.angle_extractor = None
+        self.preview_extractor = None 
+        self.current_seek_info = []
+        
         self.init_ui()
         self.connecter_signaux()
         self.charger_videos()
@@ -475,7 +496,7 @@ class TriKosmosView(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
         
-        # APERÇU DES ANGLES
+        # APERÇU DES ANGLES (Code branche romain)
         apercu_container = QFrame()
         apercu_container.setStyleSheet("background-color: black; border: 2px solid white;")
         apercu_layout = QVBoxLayout()
@@ -487,44 +508,28 @@ class TriKosmosView(QWidget):
         label_apercu.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white; color: black;")
         apercu_layout.addWidget(label_apercu)
         
-        angles_widget = QWidget()
-        angles_layout = QGridLayout()
-        angles_layout.setSpacing(6)
-        angles_layout.setContentsMargins(8, 8, 8, 8)
+        thumbnails_widget = QWidget()
+        thumbnails_layout = QGridLayout()
+        thumbnails_layout.setSpacing(6)
+        thumbnails_layout.setContentsMargins(8, 8, 8, 8)
         
-        self.angle_labels = []
+        self.thumbnails = []
         for row in range(2):
             for col in range(3):
-                angle_num = row * 3 + col + 1
-                timestamp = (angle_num - 1) * 30
-                
-                angle_frame = QFrame()
-                angle_frame.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555;")
-                angle_layout = QVBoxLayout()
-                angle_layout.setContentsMargins(0, 0, 0, 0)
-                angle_layout.setSpacing(0)
-                
-                # NOUVEAU : Utiliser VideoPreviewLabel au lieu de QLabel
-                img_label = VideoPreviewLabel(angle_num, timestamp)
-                
-                time_label = QLabel(f"Angle {angle_num} - {timestamp}s")
-                time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                time_label.setStyleSheet("color: white; font-size: 9px; padding: 2px; background-color: #1a1a1a;")
-                
-                angle_layout.addWidget(img_label)
-                angle_layout.addWidget(time_label)
-                angle_frame.setLayout(angle_layout)
-                
-                angles_layout.addWidget(angle_frame, row, col)
-                self.angle_labels.append(img_label)
+                thumb = AnimatedThumbnailLabel() 
+                thumb.setMinimumSize(180, 100)
+                thumb.setMaximumSize(280, 160)
+                thumb.setScaledContents(True) 
+                thumbnails_layout.addWidget(thumb, row, col)
+                self.thumbnails.append(thumb)
         
         for i in range(2):
-            angles_layout.setRowStretch(i, 1)
+            thumbnails_layout.setRowStretch(i, 1)
         for i in range(3):
-            angles_layout.setColumnStretch(i, 1)
+            thumbnails_layout.setColumnStretch(i, 1)
         
-        angles_widget.setLayout(angles_layout)
-        apercu_layout.addWidget(angles_widget)
+        thumbnails_widget.setLayout(thumbnails_layout)
+        apercu_layout.addWidget(thumbnails_widget)
         apercu_container.setLayout(apercu_layout)
         
         layout.addWidget(apercu_container, stretch=1)
@@ -641,6 +646,7 @@ class TriKosmosView(QWidget):
             self.controller.video_selectionnee.connect(self.afficher_video)
     
     def charger_videos(self):
+        """Charge uniquement la liste des vidéos, sans miniatures"""
         if not self.controller:
             return
         
@@ -698,30 +704,44 @@ class TriKosmosView(QWidget):
             print(f"❌ Erreur lecture JSON: {e}")
             return False
     
-    def extraire_angles(self, video_path):
-        """Lance l'extraction des 6 angles de la vidéo"""
-        for label in self.angle_labels:
-            label.clear()
-            label.setText("⏳")
-            label.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
-            # Définir le chemin vidéo pour le preview
-            label.set_video_path(video_path)
+    def lancer_extraction_previews(self, video_path, seek_info):
+        """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan."""
         
-        if self.angle_extractor and self.angle_extractor.isRunning():
-            self.angle_extractor.terminate()
+        if self.preview_extractor and self.preview_extractor.isRunning():
+            self.preview_extractor.stop()
+            self.preview_extractor.wait()
         
-        self.angle_extractor = AngleExtractor(video_path)
-        self.angle_extractor.angle_ready.connect(self.afficher_angle)
-        self.angle_extractor.start()
+        for thumb in self.thumbnails:
+            thumb.setText("🔄")
+            thumb.setPixmap(QPixmap())
+            thumb.setMovie(None)
+            thumb.set_animated_movie(None)
+            thumb.static_pixmap = None
+
+        print(f"🎬 Lancement extraction previews pour {video_path}...")
         
-        print(f"🎬 Extraction des 6 angles lancée...")
+        self.preview_extractor = PreviewExtractorThread(video_path, seek_info)
+        
+        self.preview_extractor.thumbnail_ready.connect(self.afficher_miniature)
+        self.preview_extractor.gif_ready.connect(self.stocker_gif_preview)
+        
+        self.preview_extractor.start()
+
+    def afficher_miniature(self, index, pixmap):
+        """Slot : Affiche une miniature statique extraite."""
+        if index < len(self.thumbnails):
+            self.thumbnails[index].set_static_pixmap(pixmap)
+            print(f"✅ Miniature statique {index+1} affichée")
     
-    def afficher_angle(self, index, pixmap):
-        """Affiche un angle extrait"""
-        if index < len(self.angle_labels):
-            self.angle_labels[index].setPixmap(pixmap)
-            self.angle_labels[index].setText("")
-            print(f"✅ Angle {index+1} affiché")
+    def stocker_gif_preview(self, index, gif_path: str):
+        """Slot : Crée et stocke le QMovie animé à partir du chemin du GIF."""
+        if index < len(self.thumbnails):
+            movie = QMovie(gif_path)
+            if movie.isValid():
+                self.thumbnails[index].set_animated_movie(movie)
+                print(f"✅ GIF animé {index+1} stocké")
+            else:
+                print(f"⚠️ GIF invalide reçu : {gif_path}")
     
     def on_video_selected(self):
         selected = self.table.selectedItems()
@@ -731,6 +751,7 @@ class TriKosmosView(QWidget):
             self.controller.selectionner_video(nom_video)
     
     def afficher_video(self, video):
+        """Slot : Met à jour toute la partie droite lors de la sélection"""
         self.video_selectionnee = video
         
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
@@ -752,8 +773,10 @@ class TriKosmosView(QWidget):
         self.meta_propres_fields['zone'].setText(video.metadata_propres.get('zone', ''))
         self.meta_propres_fields['zoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
         
-        # Extraire les angles de la vidéo
-        self.extraire_angles(video.chemin)
+        # Lancer l'extraction des 6 miniatures/GIFs (code branche romain)
+        if self.controller:
+            self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
+            self.lancer_extraction_previews(video.chemin, self.current_seek_info)
     
     def on_renommer(self):
         if not self.video_selectionnee:
@@ -856,30 +879,6 @@ if __name__ == '__main__':
     
     model = ApplicationModel()
     campagne = model.creer_campagne("Test_Tri", "./test_campagne")
-    
-    for i in range(15):
-        video = type('Video', (), {
-            'nom': f'0{113+i}.mp4',
-            'chemin': f'/test/0{113+i}.mp4',
-            'dossier_numero': f'0{113+i}',
-            'taille': f'{1.0 + i*0.1:.1f} Go',
-            'duree': '15:01',
-            'date': '21/08/2025',
-            'metadata_communes': {
-                'system': 'Kstereo',
-                'camera': 'imx477',
-                'model': 'Raspberry Pi 5',
-                'version': '4.0'
-            },
-            'metadata_propres': {
-                'campaign': 'ATL',
-                'zone': 'CC',
-                'zone_dict': 'Zone_test'
-            },
-            'est_selectionnee': False,
-            'est_conservee': True
-        })()
-        campagne.ajouter_video(video)
     
     controller = TriKosmosController(model)
     

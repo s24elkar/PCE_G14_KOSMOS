@@ -42,6 +42,12 @@ class TriKosmosController(QObject):
     def supprimer_video(self, nom_video: str):
         """Marque une vidéo pour suppression"""
         return self.model.marquer_video_pour_suppression(nom_video)
+
+    # --- AJOUTÉ : Méthode pour les miniatures d'angle ---
+    def get_angle_seek_times(self, nom_video: str) -> list[str]:
+        """Passe-plat pour demander les temps de seek au modèle."""
+        return self.model.get_angle_event_times(nom_video)
+    # --- FIN DE L'AJOUT ---
     
     def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict):
         """Modifie les métadonnées communes"""
@@ -76,9 +82,13 @@ class TriKosmosController(QObject):
             
             # Lire le CSV existant
             lignes = []
+            fieldnames = None # Initialiser à None
             with open(csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 fieldnames = reader.fieldnames
+                if not fieldnames:
+                    print(f"⚠️ CSV vide ou sans header: {csv_path}")
+                    return False
                 
                 for row in reader:
                     # Mettre à jour les métadonnées communes
@@ -94,13 +104,16 @@ class TriKosmosController(QObject):
                     lignes.append(row)
             
             # Réécrire le CSV
-            with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(lignes)
-            
-            print(f"✅ CSV sauvegardé: {csv_path}")
-            return True
+            if fieldnames: # S'assurer qu'on a bien lu les headers
+                with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(lignes)
+                
+                print(f"✅ CSV sauvegardé: {csv_path}")
+                return True
+            else:
+                return False
             
         except Exception as e:
             print(f"❌ Erreur sauvegarde CSV: {e}")
