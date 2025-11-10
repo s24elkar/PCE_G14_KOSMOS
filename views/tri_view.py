@@ -1,6 +1,7 @@
 """
 VUE - Page de tri KOSMOS
 Architecture MVC - Vue uniquement
+Affiche les 6 angles de la vidéo sélectionnée (toutes les 30s)
 """
 import sys
 import os
@@ -13,7 +14,7 @@ sys.path.insert(0, str(project_root))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
-    QGridLayout, QLineEdit, QMenu, QMessageBox
+    QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
 from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap
@@ -21,76 +22,127 @@ from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
 
+
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DE MINIATURES (THREAD)
+# DIALOGUE DE RENOMMAGE
 # ═══════════════════════════════════════════════════════════════
 
-class ThumbnailExtractor(QThread):
-    """Thread pour extraire les miniatures des vidéos"""
-    thumbnail_ready = pyqtSignal(int, QPixmap)  # index, pixmap
+class DialogueRenommer(QDialog):
+    """Dialogue pour renommer une vidéo"""
     
-    def __init__(self, videos, parent=None):
+    def __init__(self, nom_actuel, parent=None):
         super().__init__(parent)
-        self.videos = videos[:6]  # Maximum 6 miniatures
+        self.setWindowTitle("Renommer la vidéo")
+        self.setFixedSize(500, 200)
+        self.setStyleSheet("background-color: black;")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 20, 30, 20)
+        layout.setSpacing(15)
+        
+        titre = QLabel("Renommer la vidéo")
+        titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        titre.setStyleSheet("color: white; font-size: 18px; font-weight: bold; padding: 10px;")
+        layout.addWidget(titre)
+        
+        label_actuel = QLabel(f"Nom actuel : {nom_actuel}")
+        label_actuel.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(label_actuel)
+        
+        nom_layout = QHBoxLayout()
+        nom_label = QLabel("Nouveau nom :")
+        nom_label.setFixedWidth(120)
+        nom_label.setStyleSheet("color: white; font-size: 13px; font-weight: bold;")
+        
+        self.nom_edit = QLineEdit()
+        self.nom_edit.setText(nom_actuel)
+        self.nom_edit.setStyleSheet("background-color: white; color: black; border: 2px solid white; border-radius: 4px; padding: 6px; font-size: 13px;")
+        nom_layout.addWidget(nom_label)
+        nom_layout.addWidget(self.nom_edit)
+        layout.addLayout(nom_layout)
+        
+        layout.addStretch()
+        
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        btn_annuler = QPushButton("Annuler")
+        btn_annuler.setFixedSize(100, 35)
+        btn_annuler.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_annuler.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 12px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
+        btn_annuler.clicked.connect(self.reject)
+        
+        btn_ok = QPushButton("Renommer")
+        btn_ok.setFixedSize(100, 35)
+        btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ok.setStyleSheet("QPushButton { background-color: white; color: black; border: 2px solid white; border-radius: 4px; font-size: 12px; font-weight: bold; } QPushButton:hover { background-color: #f0f0f0; }")
+        btn_ok.clicked.connect(self.accept)
+        
+        buttons_layout.addWidget(btn_annuler)
+        buttons_layout.addWidget(btn_ok)
+        layout.addLayout(buttons_layout)
+    
+    def get_nouveau_nom(self):
+        return self.nom_edit.text().strip()
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXTRACTION DES ANGLES (THREAD)
+# ═══════════════════════════════════════════════════════════════
+
+class AngleExtractor(QThread):
+    """Thread pour extraire les 6 angles d'une vidéo (toutes les 30 secondes)"""
+    angle_ready = pyqtSignal(int, QPixmap)
+    
+    def __init__(self, video_path, parent=None):
+        super().__init__(parent)
+        self.video_path = video_path
         
     def run(self):
-        """Extrait les miniatures"""
-        for idx, video in enumerate(self.videos):
+        """Extrait les 6 angles"""
+        for idx in range(6):
             try:
-                pixmap = self.extract_thumbnail(video.chemin)
+                timestamp = idx * 30  # 0, 30, 60, 90, 120, 150 secondes
+                pixmap = self.extract_frame_at_time(self.video_path, timestamp)
                 if pixmap:
-                    self.thumbnail_ready.emit(idx, pixmap)
+                    self.angle_ready.emit(idx, pixmap)
             except Exception as e:
-                print(f"⚠️ Erreur extraction miniature {video.nom}: {e}")
+                print(f"⚠️ Erreur extraction angle {idx+1}: {e}")
     
-    def extract_thumbnail(self, video_path):
-        """Extrait une miniature d'une vidéo avec ffmpeg"""
+    def extract_frame_at_time(self, video_path, timestamp):
+        """Extrait une frame à un timestamp donné"""
         if not os.path.exists(video_path):
             print(f"⚠️ Fichier vidéo non trouvé: {video_path}")
             return None
         
         try:
-            # Créer un dossier temporaire
-            temp_dir = Path(video_path).parent / ".thumbnails"
+            temp_dir = Path(video_path).parent / ".angles"
             temp_dir.mkdir(exist_ok=True)
             
-            # Nom du fichier de sortie
-            thumbnail_path = temp_dir / f"thumb_{Path(video_path).stem}.jpg"
+            angle_path = temp_dir / f"angle_{Path(video_path).stem}_{timestamp}s.jpg"
             
-            # Si la miniature existe déjà, la charger
-            if thumbnail_path.exists():
-                pixmap = QPixmap(str(thumbnail_path))
+            if angle_path.exists():
+                pixmap = QPixmap(str(angle_path))
                 if not pixmap.isNull():
                     return pixmap
             
-            # Commande ffmpeg pour extraire une frame à 1 seconde
-            cmd = [
-                'ffmpeg',
-                '-i', video_path,
-                '-ss', '00:00:01',
-                '-vframes', '1',
-                '-vf', 'scale=320:-1',
-                '-y',
-                str(thumbnail_path)
-            ]
+            hours = timestamp // 3600
+            minutes = (timestamp % 3600) // 60
+            seconds = timestamp % 60
+            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             
-            # Exécuter ffmpeg
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=10
-            )
+            cmd = ['ffmpeg', '-i', video_path, '-ss', time_str, '-vframes', '1', '-vf', 'scale=320:-1', '-y', str(angle_path)]
             
-            if result.returncode == 0 and thumbnail_path.exists():
-                # Charger l'image
-                pixmap = QPixmap(str(thumbnail_path))
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            
+            if result.returncode == 0 and angle_path.exists():
+                pixmap = QPixmap(str(angle_path))
                 return pixmap
             
         except subprocess.TimeoutExpired:
-            print(f"⚠️ Timeout extraction miniature")
+            print(f"⚠️ Timeout extraction angle")
         except FileNotFoundError:
-            print(f"⚠️ ffmpeg non trouvé, miniatures désactivées")
+            print(f"⚠️ ffmpeg non trouvé")
         except Exception as e:
             print(f"⚠️ Erreur: {e}")
         
@@ -252,7 +304,7 @@ class TriKosmosView(QWidget):
         super().__init__(parent)
         self.controller = controller
         self.video_selectionnee = None
-        self.thumbnail_extractor = None
+        self.angle_extractor = None
         self.init_ui()
         self.connecter_signaux()
         self.charger_videos()
@@ -299,28 +351,10 @@ class TriKosmosView(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         
         self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: black;
-                color: white;
-                border: 2px solid white;
-                gridline-color: #555;
-                font-size: 11px;
-            }
-            QTableWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #333;
-            }
-            QTableWidget::item:selected {
-                background-color: #1DA1FF;
-            }
-            QHeaderView::section {
-                background-color: white;
-                color: black;
-                padding: 6px;
-                border: none;
-                font-weight: bold;
-                font-size: 12px;
-            }
+            QTableWidget { background-color: black; color: white; border: 2px solid white; gridline-color: #555; font-size: 11px; }
+            QTableWidget::item { padding: 4px; border-bottom: 1px solid #333; }
+            QTableWidget::item:selected { background-color: #1DA1FF; }
+            QHeaderView::section { background-color: white; color: black; padding: 6px; border: none; font-weight: bold; font-size: 12px; }
         """)
         
         layout.addWidget(self.table)
@@ -329,26 +363,11 @@ class TriKosmosView(QWidget):
         buttons_layout.setSpacing(6)
         buttons_layout.setContentsMargins(5, 5, 5, 5)
         
-        for btn_text, callback in [
-            ("Renommer", self.on_renommer),
-            ("Supprimer", self.on_supprimer)
-        ]:
+        for btn_text, callback in [("Renommer", self.on_renommer), ("Supprimer", self.on_supprimer)]:
             btn = QPushButton(btn_text)
             btn.setFixedHeight(32)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 11px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn.clicked.connect(callback)
             buttons_layout.addWidget(btn)
         
@@ -363,43 +382,61 @@ class TriKosmosView(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
         
-        # APERÇU
+        # APERÇU DES ANGLES
         apercu_container = QFrame()
         apercu_container.setStyleSheet("background-color: black; border: 2px solid white;")
         apercu_layout = QVBoxLayout()
         apercu_layout.setContentsMargins(0, 0, 0, 0)
         apercu_layout.setSpacing(0)
         
-        label_apercu = QLabel("Aperçu des vidéos")
+        label_apercu = QLabel("Angles de la vidéo (toutes les 30s)")
         label_apercu.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label_apercu.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white; color: black;")
         apercu_layout.addWidget(label_apercu)
         
-        thumbnails_widget = QWidget()
-        thumbnails_layout = QGridLayout()
-        thumbnails_layout.setSpacing(6)
-        thumbnails_layout.setContentsMargins(8, 8, 8, 8)
+        angles_widget = QWidget()
+        angles_layout = QGridLayout()
+        angles_layout.setSpacing(6)
+        angles_layout.setContentsMargins(8, 8, 8, 8)
         
-        self.thumbnails = []
+        self.angle_labels = []
         for row in range(2):
             for col in range(3):
-                thumb = QLabel()
-                thumb.setMinimumSize(180, 100)
-                thumb.setMaximumSize(280, 160)
-                thumb.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
-                thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                thumb.setText("📹")
-                thumb.setScaledContents(True)
-                thumbnails_layout.addWidget(thumb, row, col)
-                self.thumbnails.append(thumb)
+                angle_num = row * 3 + col + 1
+                timestamp = (angle_num - 1) * 30
+                
+                angle_frame = QFrame()
+                angle_frame.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555;")
+                angle_layout = QVBoxLayout()
+                angle_layout.setContentsMargins(0, 0, 0, 0)
+                angle_layout.setSpacing(0)
+                
+                img_label = QLabel()
+                img_label.setMinimumSize(180, 100)
+                img_label.setMaximumSize(280, 160)
+                img_label.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
+                img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                img_label.setText("📹")
+                img_label.setScaledContents(True)
+                
+                time_label = QLabel(f"Angle {angle_num} - {timestamp}s")
+                time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                time_label.setStyleSheet("color: white; font-size: 9px; padding: 2px; background-color: #1a1a1a;")
+                
+                angle_layout.addWidget(img_label)
+                angle_layout.addWidget(time_label)
+                angle_frame.setLayout(angle_layout)
+                
+                angles_layout.addWidget(angle_frame, row, col)
+                self.angle_labels.append(img_label)
         
         for i in range(2):
-            thumbnails_layout.setRowStretch(i, 1)
+            angles_layout.setRowStretch(i, 1)
         for i in range(3):
-            thumbnails_layout.setColumnStretch(i, 1)
+            angles_layout.setColumnStretch(i, 1)
         
-        thumbnails_widget.setLayout(thumbnails_layout)
-        apercu_layout.addWidget(thumbnails_widget)
+        angles_widget.setLayout(angles_layout)
+        apercu_layout.addWidget(angles_widget)
         apercu_container.setLayout(apercu_layout)
         
         layout.addWidget(apercu_container, stretch=1)
@@ -424,16 +461,11 @@ class TriKosmosView(QWidget):
     def create_metadata_section(self, title, readonly=False, type_meta="communes"):
         container = QFrame()
         container.setObjectName("metadata_section")
-        container.setStyleSheet("""
-        #metadata_section {
-            background-color: black; border: 2px solid white;
-        }
-        """)
+        container.setStyleSheet("#metadata_section { background-color: black; border: 2px solid white; }")
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # TITRE AVEC PADDING RÉDUIT
         label_titre = QLabel(title)
         label_titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label_titre.setStyleSheet("color: black; font-size: 11px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white;")
@@ -446,7 +478,6 @@ class TriKosmosView(QWidget):
         content_layout.setContentsMargins(6, 6, 6, 6)
         
         if type_meta == "communes":
-            # MÉTADONNÉES COMMUNES
             self.meta_communes_fields = {}
             for key in ['System', 'camera', 'Model', 'System ', 'Version']:
                 row = self.create_metadata_row(key, readonly=False)
@@ -455,23 +486,10 @@ class TriKosmosView(QWidget):
             
             content_layout.addStretch()
             
-            # BOUTON MODIFIER pour communes
             btn_modifier_communes = QPushButton("Modifier")
             btn_modifier_communes.setFixedSize(90, 26)
             btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier_communes.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn_modifier_communes.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn_modifier_communes.clicked.connect(self.on_modifier_metadata_communes)
             
             btn_layout_c = QHBoxLayout()
@@ -481,7 +499,6 @@ class TriKosmosView(QWidget):
             content_layout.addLayout(btn_layout_c)
             
         else:
-            # MÉTADONNÉES PROPRES
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
             
@@ -493,23 +510,10 @@ class TriKosmosView(QWidget):
             
             content_layout.addStretch()
             
-            # BOUTON MODIFIER pour propres
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn_modifier.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn_modifier.clicked.connect(self.on_modifier_metadata_propres)
             
             btn_layout = QHBoxLayout()
@@ -561,30 +565,33 @@ class TriKosmosView(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(video.duree))
             self.table.setItem(row, 3, QTableWidgetItem(video.date))
         
-        # Lancer l'extraction des miniatures
-        self.extraire_miniatures(videos)
+        # Sélectionner et afficher la première vidéo par défaut
+        if len(videos) > 0:
+            self.table.selectRow(0)
+            self.controller.selectionner_video(videos[0].nom)
     
-    def extraire_miniatures(self, videos):
-        """Lance l'extraction des miniatures en arrière-plan"""
-        if len(videos) == 0:
-            print("⚠️ Aucune vidéo à extraire")
-            return
+    def extraire_angles(self, video_path):
+        """Lance l'extraction des 6 angles de la vidéo"""
+        for label in self.angle_labels:
+            label.clear()
+            label.setText("⏳")
+            label.setStyleSheet("background-color: #2a2a2a; border: none; color: #888;")
         
-        if self.thumbnail_extractor and self.thumbnail_extractor.isRunning():
-            self.thumbnail_extractor.terminate()
+        if self.angle_extractor and self.angle_extractor.isRunning():
+            self.angle_extractor.terminate()
         
-        self.thumbnail_extractor = ThumbnailExtractor(videos)
-        self.thumbnail_extractor.thumbnail_ready.connect(self.afficher_miniature)
-        self.thumbnail_extractor.start()
+        self.angle_extractor = AngleExtractor(video_path)
+        self.angle_extractor.angle_ready.connect(self.afficher_angle)
+        self.angle_extractor.start()
         
-        print(f"🎬 Extraction de {min(6, len(videos))} miniatures lancée...")
+        print(f"🎬 Extraction des 6 angles lancée...")
     
-    def afficher_miniature(self, index, pixmap):
-        """Affiche une miniature extraite"""
-        if index < len(self.thumbnails):
-            self.thumbnails[index].setPixmap(pixmap)
-            self.thumbnails[index].setText("")
-            print(f"✅ Miniature {index+1} affichée")
+    def afficher_angle(self, index, pixmap):
+        """Affiche un angle extrait"""
+        if index < len(self.angle_labels):
+            self.angle_labels[index].setPixmap(pixmap)
+            self.angle_labels[index].setText("")
+            print(f"✅ Angle {index+1} affiché")
     
     def on_video_selected(self):
         selected = self.table.selectedItems()
@@ -610,19 +617,62 @@ class TriKosmosView(QWidget):
         self.meta_propres_fields['Campaign'].setText(video.metadata_propres.get('campaign', ''))
         self.meta_propres_fields['ZoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
         self.meta_propres_fields['Zone'].setText(video.metadata_propres.get('zone', ''))
+        
+        # Extraire les angles de la vidéo
+        self.extraire_angles(video.chemin)
     
     def on_renommer(self):
-        print("🔄 Renommer vidéo")
-    
-    def on_conserver(self):
-        if self.video_selectionnee and self.controller:
-            self.controller.conserver_video(self.video_selectionnee.nom)
-            print(f"✅ Vidéo conservée : {self.video_selectionnee.nom}")
+        if not self.video_selectionnee:
+            QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à renommer.")
+            return
+        
+        dialogue = DialogueRenommer(self.video_selectionnee.nom, self)
+        
+        if dialogue.exec() == QDialog.DialogCode.Accepted:
+            nouveau_nom = dialogue.get_nouveau_nom()
+            
+            if not nouveau_nom:
+                QMessageBox.warning(self, "Nom vide", "Le nouveau nom ne peut pas être vide.")
+                return
+            
+            if nouveau_nom == self.video_selectionnee.nom:
+                return
+            
+            reponse = QMessageBox.question(
+                self,
+                "Confirmer le renommage",
+                f"Voulez-vous vraiment renommer :\n\n'{self.video_selectionnee.nom}'\n\nen\n\n'{nouveau_nom}' ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reponse == QMessageBox.StandardButton.Yes:
+                if self.controller.renommer_video(self.video_selectionnee.nom, nouveau_nom):
+                    QMessageBox.information(self, "Succès", f"Vidéo renommée en '{nouveau_nom}'")
+                    self.charger_videos()
+                    print(f"✅ Vidéo renommée : {self.video_selectionnee.nom} → {nouveau_nom}")
+                else:
+                    QMessageBox.critical(self, "Erreur", "Impossible de renommer la vidéo.")
     
     def on_supprimer(self):
-        if self.video_selectionnee and self.controller:
-            self.controller.supprimer_video(self.video_selectionnee.nom)
-            print(f"🗑️ Vidéo marquée pour suppression : {self.video_selectionnee.nom}")
+        if not self.video_selectionnee:
+            QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à supprimer.")
+            return
+        
+        reponse = QMessageBox.question(
+            self,
+            "Confirmer la suppression",
+            f"Voulez-vous vraiment supprimer la vidéo :\n\n'{self.video_selectionnee.nom}' ?\n\nCette action est irréversible.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reponse == QMessageBox.StandardButton.Yes:
+            if self.controller.supprimer_video(self.video_selectionnee.nom):
+                QMessageBox.information(self, "Succès", f"Vidéo '{self.video_selectionnee.nom}' marquée pour suppression")
+                self.charger_videos()
+                print(f"🗑️ Vidéo supprimée : {self.video_selectionnee.nom}")
+            else:
+                QMessageBox.critical(self, "Erreur", "Impossible de supprimer la vidéo.")
     
     def on_modifier_metadata_communes(self):
         if self.video_selectionnee and self.controller:
@@ -657,18 +707,14 @@ class TriKosmosView(QWidget):
 # TEST
 if __name__ == '__main__':
     from PyQt6.QtWidgets import QApplication, QMainWindow
-    from datetime import datetime
     
     sys.path.insert(0, str(Path(__file__).parent))
     
     try:
-        from app_model import ApplicationModel
+        from models.app_model import ApplicationModel
     except ImportError:
-        try:
-            from models.app_model import ApplicationModel
-        except ImportError:
-            print("❌ Impossible d'importer ApplicationModel")
-            sys.exit(1)
+        print("❌ Impossible d'importer ApplicationModel")
+        sys.exit(1)
     
     app = QApplication(sys.argv)
     font = QFont("Montserrat", 10)
