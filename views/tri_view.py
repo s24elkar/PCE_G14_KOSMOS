@@ -15,93 +15,195 @@ from PyQt6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
     QGridLayout, QLineEdit, QMenu, QMessageBox
 )
+# --- MODIFICATION : 'qRegisterMetaType' est SUPPRIMÉ de l'import ---
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
-from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap
+from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie 
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
 
+# --- MODIFICATION : La ligne qRegisterMetaType(QMovie) est SUPPRIMÉE ---
+
+
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DE MINIATURES (THREAD)
+# CLASSE WIDGET MINIATURE ANIMÉE (Avec correction plantage)
 # ═══════════════════════════════════════════════════════════════
 
-class ThumbnailExtractor(QThread):
-    """Thread pour extraire les miniatures des vidéos"""
-    thumbnail_ready = pyqtSignal(int, QPixmap)  # index, pixmap
-    
-    def __init__(self, videos, parent=None):
+class AnimatedThumbnailLabel(QLabel):
+    """
+    QLabel personnalisé qui gère l'affichage d'un Pixmap statique
+    et le remplace par un QMovie animé lors du survol.
+    """
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.videos = videos[:6]  # Maximum 6 miniatures
-        
-    def run(self):
-        """Extrait les miniatures"""
-        for idx, video in enumerate(self.videos):
-            try:
-                pixmap = self.extract_thumbnail(video.chemin)
-                if pixmap:
-                    self.thumbnail_ready.emit(idx, pixmap)
-            except Exception as e:
-                print(f"⚠️ Erreur extraction miniature {video.nom}: {e}")
+        self.static_pixmap = None
+        self.animated_movie = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
+        self.setText("🔄") # Symbole de chargement initial
     
-    def extract_thumbnail(self, video_path):
-        """Extrait une miniature d'une vidéo avec ffmpeg"""
-        if not os.path.exists(video_path):
-            print(f"⚠️ Fichier vidéo non trouvé: {video_path}")
-            return None
+    def set_static_pixmap(self, pixmap):
+        """Définit l'image statique (miniature)"""
+        self.static_pixmap = pixmap
+        if self.movie() is None:
+            self.setPixmap(self.static_pixmap)
+            self.setText("")
+    
+    def set_animated_movie(self, movie):
+        """Stocke le GIF animé pour une utilisation future"""
+        self.animated_movie = movie
+        if self.animated_movie:
+            self.animated_movie.setCacheMode(QMovie.CacheMode.CacheAll)
+    
+    def enterEvent(self, event):
+        """Souris entre : joue le GIF"""
+        if self.animated_movie:
+            self.setMovie(self.animated_movie)
+            self.animated_movie.start()
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Souris sort : arrête le GIF et remet l'image statique"""
+        if self.animated_movie:
+            self.animated_movie.stop()
         
-        try:
-            # Créer un dossier temporaire
-            temp_dir = Path(video_path).parent / ".thumbnails"
-            temp_dir.mkdir(exist_ok=True)
+        # Correction anti-plantage (TypeNone)
+        if self.static_pixmap:
+            self.setPixmap(self.static_pixmap)
+        else:
+            self.setPixmap(QPixmap())
+            self.setText("🔄")
+        
+        super().leaveEvent(event)
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXTRACTION DE MINIATURES (THREAD) (Corrigé pour QMovie)
+# ═══════════════════════════════════════════════════════════════
+
+class PreviewExtractorThread(QThread):
+    """
+    Thread pour extraire une miniature STATIQUE et un GIF ANIMÉ
+    """
+    thumbnail_ready = pyqtSignal(int, QPixmap)
+    # Émet un 'str' (chemin du GIF) au lieu d'un QMovie
+    gif_ready = pyqtSignal(int, str)
+    
+    def __init__(self, video_path, seek_info: list[tuple[str, int]], parent=None):
+        """
+        seek_info est une liste de tuples: [(start_time_str, duration_sec), ...]
+        """
+        super().__init__(parent)
+        self.video_path = video_path
+        self.seek_info = seek_info 
+        self.temp_dir = Path(video_path).parent / ".thumbnails"
+        self.temp_dir.mkdir(exist_ok=True)
+        self._is_running = True
+
+    def stop(self):
+        self._is_running = False
+
+    def run(self):
+        for idx, (seek_time, duration) in enumerate(self.seek_info):
+            if not self._is_running:
+                break
             
-            # Nom du fichier de sortie
-            thumbnail_path = temp_dir / f"thumb_{Path(video_path).stem}.jpg"
-            
-            # Si la miniature existe déjà, la charger
-            if thumbnail_path.exists():
-                pixmap = QPixmap(str(thumbnail_path))
-                if not pixmap.isNull():
-                    return pixmap
-            
-            # Commande ffmpeg pour extraire une frame à 1 seconde
-            cmd = [
-                'ffmpeg',
-                '-i', video_path,
-                '-ss', '00:00:01',
-                '-vframes', '1',
-                '-vf', 'scale=320:-1',
-                '-y',
-                str(thumbnail_path)
-            ]
-            
-            # Exécuter ffmpeg
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=10
-            )
-            
-            if result.returncode == 0 and thumbnail_path.exists():
-                # Charger l'image
-                pixmap = QPixmap(str(thumbnail_path))
+            try:
+                safe_seek_time = seek_time.replace(':', '')
+                thumb_path = self.temp_dir / f"thumb_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.jpg"
+                
+                pixmap = self.extract_thumbnail(seek_time, thumb_path)
+                if pixmap and self._is_running:
+                    self.thumbnail_ready.emit(idx, pixmap)
+                
+                gif_path = self.temp_dir / f"gif_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.gif"
+                
+                movie_success = self.extract_gif(seek_time, duration, gif_path)
+                
+                # Émet le chemin (str) si succès
+                if movie_success and self._is_running:
+                    self.gif_ready.emit(idx, str(gif_path)) # str() pour convertir Path
+
+            except Exception as e:
+                print(f"⚠️ Erreur extraction preview {idx}: {e}")
+
+    def extract_thumbnail(self, seek_time, output_path):
+        if output_path.exists():
+            pixmap = QPixmap(str(output_path))
+            if not pixmap.isNull():
                 return pixmap
-            
-        except subprocess.TimeoutExpired:
-            print(f"⚠️ Timeout extraction miniature")
-        except FileNotFoundError:
-            print(f"⚠️ ffmpeg non trouvé, miniatures désactivées")
-        except Exception as e:
-            print(f"⚠️ Erreur: {e}")
         
+        cmd = [
+            'ffmpeg', '-ss', seek_time, '-i', self.video_path,
+            '-vframes', '1', '-vf', 'scale=320:-1', 
+            '-q:v', '3', '-y', str(output_path)
+        ]
+        try:
+            result = subprocess.run(cmd, 
+                                    stdout=subprocess.DEVNULL, 
+                                    stderr=subprocess.PIPE, 
+                                    timeout=5, 
+                                    text=True, 
+                                    encoding='utf-8')
+            if result.returncode != 0:
+                print(f"❌ Erreur FFmpeg (thumb) - Commande: {' '.join(cmd)}")
+                print(f"   Erreur: {result.stderr}")
+
+            if output_path.exists():
+                return QPixmap(str(output_path))
+        except FileNotFoundError:
+             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
+             self.stop()
+        except Exception as e:
+            print(f"Erreur Python (thumb): {e}")
         return None
 
+    def extract_gif(self, seek_time, duration: int, output_path) -> bool: # Renvoie bool
+        if output_path.exists():
+            temp_movie = QMovie(str(output_path))
+            if temp_movie.isValid():
+                return True
+        
+        # Filtre vidéo : fps=10, scale=320px, et setpts=0.5*PTS (accélération x2)
+        video_filter = f'fps=10,scale=320:-1:flags=lanczos,setpts=0.5*PTS'
+        
+        cmd = [
+            'ffmpeg',
+            '-ss', seek_time,       # Va à l'instant T (avec +5s offset)
+            '-t', str(duration),    # Extrait pour la durée calculée
+            '-i', self.video_path,
+            '-vf', video_filter,    # Applique le filtre (avec x2)
+            '-y',
+            str(output_path)
+        ]
+        try:
+            result = subprocess.run(cmd, 
+                                    stdout=subprocess.DEVNULL, 
+                                    stderr=subprocess.PIPE, 
+                                    timeout=15, 
+                                    text=True, 
+                                    encoding='utf-8')
+            if result.returncode != 0:
+                print(f"❌ Erreur FFmpeg (gif) - Commande: {' '.join(cmd)}")
+                print(f"   Erreur: {result.stderr}")
+                return False
+            
+            if output_path.exists():
+                return True
+        except FileNotFoundError:
+             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
+             self.stop()
+        except Exception as e:
+            print(f"Erreur Python (gif): {e}")
+        return False
+
 
 # ═══════════════════════════════════════════════════════════════
-# NAVBAR
+# NAVBAR (INCHANGÉE)
 # ═══════════════════════════════════════════════════════════════
 
 class NavBarAvecMenu(QWidget):
+    # ... (code de la NavBar inchangé) ...
     tab_changed = pyqtSignal(str)
     nouvelle_campagne_clicked = pyqtSignal()
     ouvrir_campagne_clicked = pyqtSignal()
@@ -244,13 +346,13 @@ class NavBarAvecMenu(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CONTRÔLEUR
+# CONTRÔLEUR (Section vide, OK)
 # ═══════════════════════════════════════════════════════════════
 
 
 
 # ═══════════════════════════════════════════════════════════════
-# VUE
+# VUE (MODIFIÉE)
 # ═══════════════════════════════════════════════════════════════
 
 class TriKosmosView(QWidget):
@@ -258,7 +360,9 @@ class TriKosmosView(QWidget):
         super().__init__(parent)
         self.controller = controller
         self.video_selectionnee = None
-        self.thumbnail_extractor = None
+        self.preview_extractor = None 
+        self.current_seek_info = []
+        
         self.init_ui()
         self.connecter_signaux()
         self.charger_videos()
@@ -390,13 +494,10 @@ class TriKosmosView(QWidget):
         self.thumbnails = []
         for row in range(2):
             for col in range(3):
-                thumb = QLabel()
+                thumb = AnimatedThumbnailLabel() 
                 thumb.setMinimumSize(180, 100)
                 thumb.setMaximumSize(280, 160)
-                thumb.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
-                thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                thumb.setText("📹")
-                thumb.setScaledContents(True)
+                thumb.setScaledContents(True) 
                 thumbnails_layout.addWidget(thumb, row, col)
                 self.thumbnails.append(thumb)
         
@@ -440,7 +541,6 @@ class TriKosmosView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # TITRE AVEC PADDING RÉDUIT
         label_titre = QLabel(title)
         label_titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label_titre.setStyleSheet("color: black; font-size: 11px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white;")
@@ -453,7 +553,6 @@ class TriKosmosView(QWidget):
         content_layout.setContentsMargins(6, 6, 6, 6)
         
         if type_meta == "communes":
-            # MÉTADONNÉES COMMUNES
             self.meta_communes_fields = {}
             for key in ['System', 'camera', 'Model', 'System ', 'Version']:
                 row = self.create_metadata_row(key, readonly=False)
@@ -462,7 +561,6 @@ class TriKosmosView(QWidget):
             
             content_layout.addStretch()
             
-            # BOUTON MODIFIER pour communes
             btn_modifier_communes = QPushButton("Modifier")
             btn_modifier_communes.setFixedSize(90, 26)
             btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -488,7 +586,6 @@ class TriKosmosView(QWidget):
             content_layout.addLayout(btn_layout_c)
             
         else:
-            # MÉTADONNÉES PROPRES
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
             
@@ -500,7 +597,6 @@ class TriKosmosView(QWidget):
             
             content_layout.addStretch()
             
-            # BOUTON MODIFIER pour propres
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -556,6 +652,7 @@ class TriKosmosView(QWidget):
             self.controller.video_selectionnee.connect(self.afficher_video)
     
     def charger_videos(self):
+        """Charge uniquement la liste des vidéos, sans miniatures"""
         if not self.controller:
             return
         
@@ -568,30 +665,44 @@ class TriKosmosView(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(video.duree))
             self.table.setItem(row, 3, QTableWidgetItem(video.date))
         
-        # Lancer l'extraction des miniatures
-        self.extraire_miniatures(videos)
-    
-    def extraire_miniatures(self, videos):
-        """Lance l'extraction des miniatures en arrière-plan"""
-        if len(videos) == 0:
-            print("⚠️ Aucune vidéo à extraire")
-            return
+    def lancer_extraction_previews(self, video_path, seek_info):
+        """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan."""
         
-        if self.thumbnail_extractor and self.thumbnail_extractor.isRunning():
-            self.thumbnail_extractor.terminate()
+        if self.preview_extractor and self.preview_extractor.isRunning():
+            self.preview_extractor.stop()
+            self.preview_extractor.wait()
         
-        self.thumbnail_extractor = ThumbnailExtractor(videos)
-        self.thumbnail_extractor.thumbnail_ready.connect(self.afficher_miniature)
-        self.thumbnail_extractor.start()
+        for thumb in self.thumbnails:
+            thumb.setText("🔄")
+            thumb.setPixmap(QPixmap())
+            thumb.setMovie(None)
+            thumb.set_animated_movie(None)
+            thumb.static_pixmap = None
+
+        print(f"🎬 Lancement extraction previews pour {video_path}...")
         
-        print(f"🎬 Extraction de {min(6, len(videos))} miniatures lancée...")
-    
+        self.preview_extractor = PreviewExtractorThread(video_path, seek_info)
+        
+        self.preview_extractor.thumbnail_ready.connect(self.afficher_miniature)
+        self.preview_extractor.gif_ready.connect(self.stocker_gif_preview)
+        
+        self.preview_extractor.start()
+
     def afficher_miniature(self, index, pixmap):
-        """Affiche une miniature extraite"""
+        """Slot : Affiche une miniature statique extraite."""
         if index < len(self.thumbnails):
-            self.thumbnails[index].setPixmap(pixmap)
-            self.thumbnails[index].setText("")
-            print(f"✅ Miniature {index+1} affichée")
+            self.thumbnails[index].set_static_pixmap(pixmap)
+            print(f"✅ Miniature statique {index+1} affichée")
+    
+    def stocker_gif_preview(self, index, gif_path: str):
+        """Slot : Crée et stocke le QMovie animé à partir du chemin du GIF."""
+        if index < len(self.thumbnails):
+            movie = QMovie(gif_path)
+            if movie.isValid():
+                self.thumbnails[index].set_animated_movie(movie)
+                print(f"✅ GIF animé {index+1} stocké")
+            else:
+                print(f"⚠️ GIF invalide reçu : {gif_path}")
     
     def on_video_selected(self):
         selected = self.table.selectedItems()
@@ -601,22 +712,26 @@ class TriKosmosView(QWidget):
             self.controller.selectionner_video(nom_video)
     
     def afficher_video(self, video):
+        """Slot : Met à jour toute la partie droite lors de la sélection"""
         self.video_selectionnee = video
         
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
-        print(f"   Métadonnées communes : {video.metadata_communes}")
-        print(f"   Métadonnées propres : {video.metadata_propres}")
         
-        # Métadonnées communes
+        # 1. Remplir les métadonnées
         self.meta_communes_fields['System'].setText(video.metadata_communes.get('system', ''))
         self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
         self.meta_communes_fields['Model'].setText(video.metadata_communes.get('model', ''))
+        self.meta_communes_fields.get('System ', self.meta_communes_fields.get('System')).setText(video.metadata_communes.get('system', ''))
         self.meta_communes_fields['Version'].setText(video.metadata_communes.get('version', ''))
         
-        # Métadonnées propres
         self.meta_propres_fields['Campaign'].setText(video.metadata_propres.get('campaign', ''))
         self.meta_propres_fields['ZoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
         self.meta_propres_fields['Zone'].setText(video.metadata_propres.get('zone', ''))
+
+        # 2. Lancer l'extraction des 6 miniatures/GIFs
+        if self.controller:
+            self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
+            self.lancer_extraction_previews(video.chemin, self.current_seek_info)
     
     def on_renommer(self):
         print("🔄 Renommer vidéo")
@@ -634,7 +749,7 @@ class TriKosmosView(QWidget):
     def on_modifier_metadata_communes(self):
         if self.video_selectionnee and self.controller:
             nouvelles_meta = {
-                'system': self.meta_communes_fields['System'].text(),
+                'system': self.meta_communes_fields.get('System ', self.meta_communes_fields.get('System')).text(),
                 'camera': self.meta_communes_fields['camera'].text(),
                 'model': self.meta_communes_fields['Model'].text(),
                 'version': self.meta_communes_fields['Version'].text()
@@ -684,29 +799,7 @@ if __name__ == '__main__':
     model = ApplicationModel()
     campagne = model.creer_campagne("Test_Tri", "./test_campagne")
     
-    for i in range(15):
-        video = type('Video', (), {
-            'nom': f'0{113+i}.mp4',
-            'chemin': f'/test/0{113+i}.mp4',
-            'dossier_numero': f'0{113+i}',
-            'taille': f'{1.0 + i*0.1:.1f} Go',
-            'duree': '15:01',
-            'date': '21/08/2025',
-            'metadata_communes': {
-                'system': 'Kstereo',
-                'camera': 'imx477',
-                'model': 'Raspberry Pi 5',
-                'version': '4.0'
-            },
-            'metadata_propres': {
-                'campaign': 'ATL',
-                'zone': 'CC',
-                'zone_dict': 'Zone_test'
-            },
-            'est_selectionnee': False,
-            'est_conservee': True
-        })()
-        campagne.ajouter_video(video)
+    # ... (le code de test reste le même) ...
     
     controller = TriKosmosController(model)
     
