@@ -1,9 +1,12 @@
 """
 VUE - Page de tri KOSMOS
 Architecture MVC - Vue uniquement
+Affiche les 6 angles de la vidéo sélectionnée (toutes les 30s)
+Lecture vidéo au survol + Métadonnées depuis JSON
 """
 import sys
 import os
+import json
 import subprocess
 from pathlib import Path
 
@@ -13,20 +16,80 @@ sys.path.insert(0, str(project_root))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
-    QGridLayout, QLineEdit, QMenu, QMessageBox
+    QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog
 )
-# --- MODIFICATION : 'qRegisterMetaType' est SUPPRIMÉ de l'import ---
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
-from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie 
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QEvent
+from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
 
-# --- MODIFICATION : La ligne qRegisterMetaType(QMovie) est SUPPRIMÉE ---
+
+# ═══════════════════════════════════════════════════════════════
+# DIALOGUE DE RENOMMAGE
+# ═══════════════════════════════════════════════════════════════
+
+class DialogueRenommer(QDialog):
+    """Dialogue pour renommer une vidéo"""
+    
+    def __init__(self, nom_actuel, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Renommer la vidéo")
+        self.setFixedSize(500, 200)
+        self.setStyleSheet("background-color: black;")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 20, 30, 20)
+        layout.setSpacing(15)
+        
+        titre = QLabel("Renommer la vidéo")
+        titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        titre.setStyleSheet("color: white; font-size: 18px; font-weight: bold; padding: 10px;")
+        layout.addWidget(titre)
+        
+        label_actuel = QLabel(f"Nom actuel : {nom_actuel}")
+        label_actuel.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(label_actuel)
+        
+        nom_layout = QHBoxLayout()
+        nom_label = QLabel("Nouveau nom :")
+        nom_label.setFixedWidth(120)
+        nom_label.setStyleSheet("color: white; font-size: 13px; font-weight: bold;")
+        
+        self.nom_edit = QLineEdit()
+        self.nom_edit.setText(nom_actuel)
+        self.nom_edit.setStyleSheet("background-color: white; color: black; border: 2px solid white; border-radius: 4px; padding: 6px; font-size: 13px;")
+        nom_layout.addWidget(nom_label)
+        nom_layout.addWidget(self.nom_edit)
+        layout.addLayout(nom_layout)
+        
+        layout.addStretch()
+        
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        btn_annuler = QPushButton("Annuler")
+        btn_annuler.setFixedSize(100, 35)
+        btn_annuler.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_annuler.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 12px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
+        btn_annuler.clicked.connect(self.reject)
+        
+        btn_ok = QPushButton("Renommer")
+        btn_ok.setFixedSize(100, 35)
+        btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ok.setStyleSheet("QPushButton { background-color: white; color: black; border: 2px solid white; border-radius: 4px; font-size: 12px; font-weight: bold; } QPushButton:hover { background-color: #f0f0f0; }")
+        btn_ok.clicked.connect(self.accept)
+        
+        buttons_layout.addWidget(btn_annuler)
+        buttons_layout.addWidget(btn_ok)
+        layout.addLayout(buttons_layout)
+    
+    def get_nouveau_nom(self):
+        return self.nom_edit.text().strip()
 
 
 # ═══════════════════════════════════════════════════════════════
-# CLASSE WIDGET MINIATURE ANIMÉE (Avec correction plantage)
+# CLASSE WIDGET MINIATURE ANIMÉE (Code branche romain)
 # ═══════════════════════════════════════════════════════════════
 
 class AnimatedThumbnailLabel(QLabel):
@@ -40,7 +103,7 @@ class AnimatedThumbnailLabel(QLabel):
         self.animated_movie = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
-        self.setText("🔄") # Symbole de chargement initial
+        self.setText("🔄")  # Symbole de chargement initial
     
     def set_static_pixmap(self, pixmap):
         """Définit l'image statique (miniature)"""
@@ -78,7 +141,7 @@ class AnimatedThumbnailLabel(QLabel):
 
 
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DE MINIATURES (THREAD) (Corrigé pour QMovie)
+# EXTRACTION DE MINIATURES (THREAD) (Code branche romain)
 # ═══════════════════════════════════════════════════════════════
 
 class PreviewExtractorThread(QThread):
@@ -89,7 +152,7 @@ class PreviewExtractorThread(QThread):
     # Émet un 'str' (chemin du GIF) au lieu d'un QMovie
     gif_ready = pyqtSignal(int, str)
     
-    def __init__(self, video_path, seek_info: list[tuple[str, int]], parent=None):
+    def __init__(self, video_path, seek_info: list, parent=None):
         """
         seek_info est une liste de tuples: [(start_time_str, duration_sec), ...]
         """
@@ -122,7 +185,7 @@ class PreviewExtractorThread(QThread):
                 
                 # Émet le chemin (str) si succès
                 if movie_success and self._is_running:
-                    self.gif_ready.emit(idx, str(gif_path)) # str() pour convertir Path
+                    self.gif_ready.emit(idx, str(gif_path))
 
             except Exception as e:
                 print(f"⚠️ Erreur extraction preview {idx}: {e}")
@@ -158,7 +221,7 @@ class PreviewExtractorThread(QThread):
             print(f"Erreur Python (thumb): {e}")
         return None
 
-    def extract_gif(self, seek_time, duration: int, output_path) -> bool: # Renvoie bool
+    def extract_gif(self, seek_time, duration: int, output_path) -> bool:
         if output_path.exists():
             temp_movie = QMovie(str(output_path))
             if temp_movie.isValid():
@@ -169,10 +232,10 @@ class PreviewExtractorThread(QThread):
         
         cmd = [
             'ffmpeg',
-            '-ss', seek_time,       # Va à l'instant T (avec +5s offset)
-            '-t', str(duration),    # Extrait pour la durée calculée
+            '-ss', seek_time,
+            '-t', str(duration),
             '-i', self.video_path,
-            '-vf', video_filter,    # Applique le filtre (avec x2)
+            '-vf', video_filter,
             '-y',
             str(output_path)
         ]
@@ -199,11 +262,10 @@ class PreviewExtractorThread(QThread):
 
 
 # ═══════════════════════════════════════════════════════════════
-# NAVBAR (INCHANGÉE)
+# NAVBAR
 # ═══════════════════════════════════════════════════════════════
 
 class NavBarAvecMenu(QWidget):
-    # ... (code de la NavBar inchangé) ...
     tab_changed = pyqtSignal(str)
     nouvelle_campagne_clicked = pyqtSignal()
     ouvrir_campagne_clicked = pyqtSignal()
@@ -346,13 +408,7 @@ class NavBarAvecMenu(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CONTRÔLEUR (Section vide, OK)
-# ═══════════════════════════════════════════════════════════════
-
-
-
-# ═══════════════════════════════════════════════════════════════
-# VUE (MODIFIÉE)
+# VUE
 # ═══════════════════════════════════════════════════════════════
 
 class TriKosmosView(QWidget):
@@ -409,28 +465,10 @@ class TriKosmosView(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         
         self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: black;
-                color: white;
-                border: 2px solid white;
-                gridline-color: #555;
-                font-size: 11px;
-            }
-            QTableWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #333;
-            }
-            QTableWidget::item:selected {
-                background-color: #1DA1FF;
-            }
-            QHeaderView::section {
-                background-color: white;
-                color: black;
-                padding: 6px;
-                border: none;
-                font-weight: bold;
-                font-size: 12px;
-            }
+            QTableWidget { background-color: black; color: white; border: 2px solid white; gridline-color: #555; font-size: 11px; }
+            QTableWidget::item { padding: 4px; border-bottom: 1px solid #333; }
+            QTableWidget::item:selected { background-color: #1DA1FF; }
+            QHeaderView::section { background-color: white; color: black; padding: 6px; border: none; font-weight: bold; font-size: 12px; }
         """)
         
         layout.addWidget(self.table)
@@ -439,27 +477,11 @@ class TriKosmosView(QWidget):
         buttons_layout.setSpacing(6)
         buttons_layout.setContentsMargins(5, 5, 5, 5)
         
-        for btn_text, callback in [
-            ("Renommer", self.on_renommer),
-            ("Conserver", self.on_conserver),
-            ("Supprimer", self.on_supprimer)
-        ]:
+        for btn_text, callback in [("Renommer", self.on_renommer), ("Supprimer", self.on_supprimer)]:
             btn = QPushButton(btn_text)
             btn.setFixedHeight(32)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 11px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn.clicked.connect(callback)
             buttons_layout.addWidget(btn)
         
@@ -474,7 +496,7 @@ class TriKosmosView(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
         
-        # APERÇU
+        # APERÇU DES ANGLES (Code branche romain)
         apercu_container = QFrame()
         apercu_container.setStyleSheet("background-color: black; border: 2px solid white;")
         apercu_layout = QVBoxLayout()
@@ -532,11 +554,7 @@ class TriKosmosView(QWidget):
     def create_metadata_section(self, title, readonly=False, type_meta="communes"):
         container = QFrame()
         container.setObjectName("metadata_section")
-        container.setStyleSheet("""
-        #metadata_section {
-            background-color: black; border: 2px solid white;
-        }
-        """)
+        container.setStyleSheet("#metadata_section { background-color: black; border: 2px solid white; }")
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -554,7 +572,7 @@ class TriKosmosView(QWidget):
         
         if type_meta == "communes":
             self.meta_communes_fields = {}
-            for key in ['System', 'camera', 'Model', 'System ', 'Version']:
+            for key in ['system', 'camera', 'model', 'version']:
                 row = self.create_metadata_row(key, readonly=False)
                 self.meta_communes_fields[key] = row['widget']
                 content_layout.addWidget(row['container'])
@@ -564,19 +582,7 @@ class TriKosmosView(QWidget):
             btn_modifier_communes = QPushButton("Modifier")
             btn_modifier_communes.setFixedSize(90, 26)
             btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier_communes.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn_modifier_communes.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn_modifier_communes.clicked.connect(self.on_modifier_metadata_communes)
             
             btn_layout_c = QHBoxLayout()
@@ -589,7 +595,7 @@ class TriKosmosView(QWidget):
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
             
-            for key in ['Campaign', 'ZoneDict', 'Zone']:
+            for key in ['campaign', 'zone', 'zoneDict']:
                 row = self.create_metadata_row(key, readonly=False)
                 self.meta_propres_fields[key] = row['widget']
                 self.meta_propres_widgets[key] = row['container']
@@ -600,19 +606,7 @@ class TriKosmosView(QWidget):
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn_modifier.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn_modifier.clicked.connect(self.on_modifier_metadata_propres)
             
             btn_layout = QHBoxLayout()
@@ -635,7 +629,7 @@ class TriKosmosView(QWidget):
         
         label = QLabel(f"{key}:")
         label.setStyleSheet("color: white; font-weight: bold; font-size: 10px;")
-        label.setFixedWidth(55)
+        label.setFixedWidth(65)
         row_layout.addWidget(label)
         
         value_widget = QLineEdit()
@@ -665,6 +659,51 @@ class TriKosmosView(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(video.duree))
             self.table.setItem(row, 3, QTableWidgetItem(video.date))
         
+        # Sélectionner et afficher la première vidéo par défaut
+        if len(videos) > 0:
+            self.table.selectRow(0)
+            self.controller.selectionner_video(videos[0].nom)
+    
+    def charger_metadata_depuis_json(self, video):
+        """Charge les métadonnées depuis le fichier JSON du dossier"""
+        try:
+            dossier = Path(video.chemin).parent
+            json_path = dossier / f"{video.dossier_numero}.json"
+            
+            if not json_path.exists():
+                print(f"⚠️ Fichier JSON non trouvé: {json_path}")
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # MÉTADONNÉES COMMUNES (system)
+            if 'system' in data:
+                system = data['system']
+                video.metadata_communes['system'] = system.get('system', '')
+                video.metadata_communes['camera'] = system.get('camera', '')
+                video.metadata_communes['model'] = system.get('model', '')
+                video.metadata_communes['version'] = system.get('version', '')
+            
+            # MÉTADONNÉES PROPRES (campaign)
+            if 'campaign' in data:
+                campaign = data['campaign']
+                if 'zoneDict' in campaign:
+                    zone_dict = campaign['zoneDict']
+                    video.metadata_propres['campaign'] = zone_dict.get('campaign', '')
+                    video.metadata_propres['zone'] = zone_dict.get('zone', '')
+                    video.metadata_propres['zone_dict'] = str(zone_dict)
+            
+            print(f"✅ Métadonnées JSON chargées pour {video.nom}")
+            print(f"   Communes: {video.metadata_communes}")
+            print(f"   Propres: {video.metadata_propres}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur lecture JSON: {e}")
+            return False
+    
     def lancer_extraction_previews(self, video_path, seek_info):
         """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan."""
         
@@ -717,42 +756,88 @@ class TriKosmosView(QWidget):
         
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
         
-        # 1. Remplir les métadonnées
-        self.meta_communes_fields['System'].setText(video.metadata_communes.get('system', ''))
-        self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
-        self.meta_communes_fields['Model'].setText(video.metadata_communes.get('model', ''))
-        self.meta_communes_fields.get('System ', self.meta_communes_fields.get('System')).setText(video.metadata_communes.get('system', ''))
-        self.meta_communes_fields['Version'].setText(video.metadata_communes.get('version', ''))
+        # Charger les métadonnées depuis le JSON
+        self.charger_metadata_depuis_json(video)
         
-        self.meta_propres_fields['Campaign'].setText(video.metadata_propres.get('campaign', ''))
-        self.meta_propres_fields['ZoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
-        self.meta_propres_fields['Zone'].setText(video.metadata_propres.get('zone', ''))
-
-        # 2. Lancer l'extraction des 6 miniatures/GIFs
+        print(f"   Métadonnées communes : {video.metadata_communes}")
+        print(f"   Métadonnées propres : {video.metadata_propres}")
+        
+        # Métadonnées communes
+        self.meta_communes_fields['system'].setText(video.metadata_communes.get('system', ''))
+        self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
+        self.meta_communes_fields['model'].setText(video.metadata_communes.get('model', ''))
+        self.meta_communes_fields['version'].setText(video.metadata_communes.get('version', ''))
+        
+        # Métadonnées propres
+        self.meta_propres_fields['campaign'].setText(video.metadata_propres.get('campaign', ''))
+        self.meta_propres_fields['zone'].setText(video.metadata_propres.get('zone', ''))
+        self.meta_propres_fields['zoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
+        
+        # Lancer l'extraction des 6 miniatures/GIFs (code branche romain)
         if self.controller:
             self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
             self.lancer_extraction_previews(video.chemin, self.current_seek_info)
     
     def on_renommer(self):
-        print("🔄 Renommer vidéo")
-    
-    def on_conserver(self):
-        if self.video_selectionnee and self.controller:
-            self.controller.conserver_video(self.video_selectionnee.nom)
-            print(f"✅ Vidéo conservée : {self.video_selectionnee.nom}")
+        if not self.video_selectionnee:
+            QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à renommer.")
+            return
+        
+        dialogue = DialogueRenommer(self.video_selectionnee.nom, self)
+        
+        if dialogue.exec() == QDialog.DialogCode.Accepted:
+            nouveau_nom = dialogue.get_nouveau_nom()
+            
+            if not nouveau_nom:
+                QMessageBox.warning(self, "Nom vide", "Le nouveau nom ne peut pas être vide.")
+                return
+            
+            if nouveau_nom == self.video_selectionnee.nom:
+                return
+            
+            reponse = QMessageBox.question(
+                self,
+                "Confirmer le renommage",
+                f"Voulez-vous vraiment renommer :\n\n'{self.video_selectionnee.nom}'\n\nen\n\n'{nouveau_nom}' ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reponse == QMessageBox.StandardButton.Yes:
+                if self.controller.renommer_video(self.video_selectionnee.nom, nouveau_nom):
+                    QMessageBox.information(self, "Succès", f"Vidéo renommée en '{nouveau_nom}'")
+                    self.charger_videos()
+                    print(f"✅ Vidéo renommée : {self.video_selectionnee.nom} → {nouveau_nom}")
+                else:
+                    QMessageBox.critical(self, "Erreur", "Impossible de renommer la vidéo.")
     
     def on_supprimer(self):
-        if self.video_selectionnee and self.controller:
-            self.controller.supprimer_video(self.video_selectionnee.nom)
-            print(f"🗑️ Vidéo marquée pour suppression : {self.video_selectionnee.nom}")
+        if not self.video_selectionnee:
+            QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à supprimer.")
+            return
+        
+        reponse = QMessageBox.question(
+            self,
+            "Confirmer la suppression",
+            f"Voulez-vous vraiment supprimer la vidéo :\n\n'{self.video_selectionnee.nom}' ?\n\nCette action est irréversible.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reponse == QMessageBox.StandardButton.Yes:
+            if self.controller.supprimer_video(self.video_selectionnee.nom):
+                QMessageBox.information(self, "Succès", f"Vidéo '{self.video_selectionnee.nom}' marquée pour suppression")
+                self.charger_videos()
+                print(f"🗑️ Vidéo supprimée : {self.video_selectionnee.nom}")
+            else:
+                QMessageBox.critical(self, "Erreur", "Impossible de supprimer la vidéo.")
     
     def on_modifier_metadata_communes(self):
         if self.video_selectionnee and self.controller:
             nouvelles_meta = {
-                'system': self.meta_communes_fields.get('System ', self.meta_communes_fields.get('System')).text(),
+                'system': self.meta_communes_fields['system'].text(),
                 'camera': self.meta_communes_fields['camera'].text(),
-                'model': self.meta_communes_fields['Model'].text(),
-                'version': self.meta_communes_fields['Version'].text()
+                'model': self.meta_communes_fields['model'].text(),
+                'version': self.meta_communes_fields['version'].text()
             }
             
             if self.controller.modifier_metadonnees_communes(self.video_selectionnee.nom, nouvelles_meta):
@@ -764,9 +849,9 @@ class TriKosmosView(QWidget):
     def on_modifier_metadata_propres(self):
         if self.video_selectionnee and self.controller:
             nouvelles_meta = {
-                'campaign': self.meta_propres_fields['Campaign'].text(),
-                'zone_dict': self.meta_propres_fields['ZoneDict'].text(),
-                'zone': self.meta_propres_fields['Zone'].text()
+                'campaign': self.meta_propres_fields['campaign'].text(),
+                'zone': self.meta_propres_fields['zone'].text(),
+                'zone_dict': self.meta_propres_fields['zoneDict'].text()
             }
             
             if self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta):
@@ -779,18 +864,14 @@ class TriKosmosView(QWidget):
 # TEST
 if __name__ == '__main__':
     from PyQt6.QtWidgets import QApplication, QMainWindow
-    from datetime import datetime
     
     sys.path.insert(0, str(Path(__file__).parent))
     
     try:
-        from app_model import ApplicationModel
+        from models.app_model import ApplicationModel
     except ImportError:
-        try:
-            from models.app_model import ApplicationModel
-        except ImportError:
-            print("❌ Impossible d'importer ApplicationModel")
-            sys.exit(1)
+        print("❌ Impossible d'importer ApplicationModel")
+        sys.exit(1)
     
     app = QApplication(sys.argv)
     font = QFont("Montserrat", 10)
@@ -798,8 +879,6 @@ if __name__ == '__main__':
     
     model = ApplicationModel()
     campagne = model.creer_campagne("Test_Tri", "./test_campagne")
-    
-    # ... (le code de test reste le même) ...
     
     controller = TriKosmosController(model)
     
