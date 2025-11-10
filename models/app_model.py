@@ -560,12 +560,18 @@ class ApplicationModel:
         except Exception as e:
             print(f"❌ Erreur parsing temps '{time_str}': {e}")
             return 0
+        
+    def _parse_time_str_to_ms(self, time_str: str) -> int:
+        """Convertit un temps "HH:MM:SS" en millisecondes."""
+        if not time_str: return 0
+        try:
+            h, m, s = map(int, time_str.split(':'))
+            total_seconds = h * 3600 + m * 60 + s
+            return total_seconds * 1000
+        except Exception as e:
+            print(f"Erreur parsing MS: {e}")
+            return 0
 
-    # --- DANS app_model.py, REMPLACEZ get_angle_event_times PAR CECI ---
-
-    # --- DANS app_model.py, REMPLACEZ get_angle_event_times PAR CECI ---
-
-    # --- DANS app_model.py, REMPLACEZ get_angle_event_times PAR CECI ---
 
     def get_angle_event_times(self, nom_video: str) -> list[tuple[str, int]]:
         """
