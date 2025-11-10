@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
-    QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog
+    QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog, QScrollArea
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QEvent
 from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie
@@ -170,7 +170,6 @@ class PreviewExtractorThread(QThread):
         for idx, (seek_time, duration) in enumerate(self.seek_info):
             if not self._is_running:
                 break
-            
             try:
                 safe_seek_time = seek_time.replace(':', '')
                 thumb_path = self.temp_dir / f"thumb_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.jpg"
@@ -180,10 +179,7 @@ class PreviewExtractorThread(QThread):
                     self.thumbnail_ready.emit(idx, pixmap)
                 
                 gif_path = self.temp_dir / f"gif_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.gif"
-                
                 movie_success = self.extract_gif(seek_time, duration, gif_path)
-                
-                # Émet le chemin (str) si succès
                 if movie_success and self._is_running:
                     self.gif_ready.emit(idx, str(gif_path))
 
@@ -418,6 +414,8 @@ class TriKosmosView(QWidget):
         self.video_selectionnee = None
         self.preview_extractor = None 
         self.current_seek_info = []
+        # État d'édition pour les métadonnées propres (toggle lecture/écriture)
+        self.edit_propres = False
         
         self.init_ui()
         self.connecter_signaux()
@@ -534,17 +532,21 @@ class TriKosmosView(QWidget):
         
         layout.addWidget(apercu_container, stretch=1)
         
-        # MÉTADONNÉES
+        # MÉTADONNÉES - DEUX SECTIONS
         meta_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        meta_communes_widget = self.create_metadata_section("Métadonnées communes", readonly=False, type_meta="communes")
+        # Métadonnées communes (lecture seule)
+        meta_communes_widget = self.create_metadata_section("Métadonnées communes", readonly=True, type_meta="communes")
         meta_splitter.addWidget(meta_communes_widget)
         
-        meta_propres_widget = self.create_metadata_section("Métadonnées propres", readonly=False, type_meta="propres")
+        # Métadonnées propres (modification possible)
+        meta_propres_widget = self.create_metadata_section("Métadonnées propres", readonly=True, type_meta="propres")
         meta_splitter.addWidget(meta_propres_widget)
         
+        # Forcer les deux sections à avoir exactement la même taille
         meta_splitter.setStretchFactor(0, 1)
         meta_splitter.setStretchFactor(1, 1)
+        meta_splitter.setSizes([400, 400])  # Taille égale pour les deux panels
         
         layout.addWidget(meta_splitter, stretch=1)
         
@@ -573,41 +575,60 @@ class TriKosmosView(QWidget):
         if type_meta == "communes":
             self.meta_communes_fields = {}
             for key in ['system', 'camera', 'model', 'version']:
-                row = self.create_metadata_row(key, readonly=False)
+                # Créer les champs en mode lecture seule pour les métadonnées communes
+                row = self.create_metadata_row(key, readonly=readonly)
                 self.meta_communes_fields[key] = row['widget']
                 content_layout.addWidget(row['container'])
             
             content_layout.addStretch()
             
+            # Bouton "Modifier" décoratif pour les métadonnées communes (sans action)
             btn_modifier_communes = QPushButton("Modifier")
             btn_modifier_communes.setFixedSize(90, 26)
             btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_modifier_communes.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
-            btn_modifier_communes.clicked.connect(self.on_modifier_metadata_communes)
             
-            btn_layout_c = QHBoxLayout()
-            btn_layout_c.addStretch()
-            btn_layout_c.addWidget(btn_modifier_communes)
-            btn_layout_c.setContentsMargins(0, 4, 0, 4)
-            content_layout.addLayout(btn_layout_c)
+            
+            btn_communes_layout = QHBoxLayout()
+            btn_communes_layout.addStretch()
+            btn_communes_layout.addWidget(btn_modifier_communes)
+            btn_communes_layout.setContentsMargins(0, 4, 0, 4)
+            content_layout.addLayout(btn_communes_layout)
             
         else:
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
             
-            for key in ['campaign', 'zone', 'zoneDict']:
-                row = self.create_metadata_row(key, readonly=False)
-                self.meta_propres_fields[key] = row['widget']
-                self.meta_propres_widgets[key] = row['container']
-                content_layout.addWidget(row['container'])
+            # Créer un conteneur scrollable pour toutes les métadonnées propres
+            self.meta_propres_scroll_area = QScrollArea()
+            scroll_widget = QWidget()
+            scroll_layout = QVBoxLayout()
+            scroll_layout.setContentsMargins(5, 5, 5, 5)
+            scroll_layout.setSpacing(3)
             
-            content_layout.addStretch()
+            # Stocker le layout pour pouvoir y ajouter dynamiquement des champs
+            self.meta_propres_scroll_layout = scroll_layout
+            
+            scroll_widget.setLayout(scroll_layout)
+            self.meta_propres_scroll_area.setWidget(scroll_widget)
+            self.meta_propres_scroll_area.setWidgetResizable(True)
+            self.meta_propres_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.meta_propres_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.meta_propres_scroll_area.setStyleSheet("QScrollArea { border: none; background-color: black; }")
+            
+            content_layout.addWidget(self.meta_propres_scroll_area)
+            
+            # Supprimer addStretch() pour que le scroll_area prenne tout l'espace
             
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_modifier.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn_modifier.clicked.connect(self.on_modifier_metadata_propres)
+            # Commencer désactivé jusqu'à sélection d'une vidéo
+            btn_modifier.setEnabled(False)
+            # Conserve une référence au bouton pour changer le libellé entre "Modifier" et "Sauvegarder"
+            self.btn_modifier_propres = btn_modifier
             
             btn_layout = QHBoxLayout()
             btn_layout.addStretch()
@@ -621,6 +642,7 @@ class TriKosmosView(QWidget):
         
         return container
     
+    # Création d'une ligne de métadonnée avec support lecture/édition
     def create_metadata_row(self, key, readonly=True):
         row_widget = QWidget()
         row_layout = QHBoxLayout()
@@ -633,12 +655,65 @@ class TriKosmosView(QWidget):
         row_layout.addWidget(label)
         
         value_widget = QLineEdit()
+        value_widget.setReadOnly(readonly)  # important pour mode lecture/édition
         value_widget.setStyleSheet("color: white; padding: 3px; background-color: #1a1a1a; border: 1px solid #555; font-size: 10px;")
         
         row_layout.addWidget(value_widget)
         row_widget.setLayout(row_layout)
         
         return {'container': row_widget, 'widget': value_widget}
+    
+    def remplir_metadonnees_propres(self, metadata_propres: dict):
+        """Remplit dynamiquement la section des métadonnées propres"""
+        # Vider le layout existant
+        self.vider_layout(self.meta_propres_scroll_layout)
+        self.meta_propres_fields.clear()
+        self.meta_propres_widgets.clear()
+        
+        # Organiser les métadonnées par section
+        sections = {}
+        for key, value in metadata_propres.items():
+            if '_' in key:
+                section_name, field_name = key.split('_', 1)
+                if section_name not in sections:
+                    sections[section_name] = {}
+                sections[section_name][field_name] = value
+            else:
+                if 'general' not in sections:
+                    sections['general'] = {}
+                sections['general'][key] = value
+        
+        # Créer des sections organisées
+        for section_name, fields in sections.items():
+            if not fields:  # Skip empty sections
+                continue
+                
+            # Titre de section
+            section_label = QLabel(f"{section_name.upper()}")
+            section_label.setStyleSheet("color: white; font-weight: bold; font-size: 11px; padding: 5px 0px 2px 0px;")
+            self.meta_propres_scroll_layout.addWidget(section_label)
+            
+            # Champs de la section
+            for field_name, value in fields.items():
+                full_key = f"{section_name}_{field_name}" if section_name != 'general' else field_name
+                row = self.create_metadata_row(field_name, readonly=True)
+                row['widget'].setText(str(value))
+                
+                self.meta_propres_fields[full_key] = row['widget']
+                self.meta_propres_widgets[full_key] = row['container']
+                self.meta_propres_scroll_layout.addWidget(row['container'])
+        
+        # Ne pas ajouter de stretch pour utiliser tout l'espace disponible
+    
+    def vider_layout(self, layout):
+        """Vide complètement un layout"""
+        if layout is not None:
+            while layout.count():
+                child = layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+                elif child.layout():
+                    self.vider_layout(child.layout())
     
     def connecter_signaux(self):
         if self.controller:
@@ -664,45 +739,7 @@ class TriKosmosView(QWidget):
             self.table.selectRow(0)
             self.controller.selectionner_video(videos[0].nom)
     
-    def charger_metadata_depuis_json(self, video):
-        """Charge les métadonnées depuis le fichier JSON du dossier"""
-        try:
-            dossier = Path(video.chemin).parent
-            json_path = dossier / f"{video.dossier_numero}.json"
-            
-            if not json_path.exists():
-                print(f"⚠️ Fichier JSON non trouvé: {json_path}")
-                return False
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # MÉTADONNÉES COMMUNES (system)
-            if 'system' in data:
-                system = data['system']
-                video.metadata_communes['system'] = system.get('system', '')
-                video.metadata_communes['camera'] = system.get('camera', '')
-                video.metadata_communes['model'] = system.get('model', '')
-                video.metadata_communes['version'] = system.get('version', '')
-            
-            # MÉTADONNÉES PROPRES (campaign)
-            if 'campaign' in data:
-                campaign = data['campaign']
-                if 'zoneDict' in campaign:
-                    zone_dict = campaign['zoneDict']
-                    video.metadata_propres['campaign'] = zone_dict.get('campaign', '')
-                    video.metadata_propres['zone'] = zone_dict.get('zone', '')
-                    video.metadata_propres['zone_dict'] = str(zone_dict)
-            
-            print(f"✅ Métadonnées JSON chargées pour {video.nom}")
-            print(f"   Communes: {video.metadata_communes}")
-            print(f"   Propres: {video.metadata_propres}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur lecture JSON: {e}")
-            return False
+
     
     def lancer_extraction_previews(self, video_path, seek_info):
         """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan."""
@@ -756,27 +793,36 @@ class TriKosmosView(QWidget):
         
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
         
-        # Charger les métadonnées depuis le JSON
-        self.charger_metadata_depuis_json(video)
+        # Charger les métadonnées depuis le JSON via le contrôleur
+        if self.controller:
+            self.controller.charger_metadonnees_depuis_json(video)
+            # Charger aussi les métadonnées communes depuis le JSON
+            self.controller.charger_metadonnees_communes_depuis_json(video)
         
         print(f"   Métadonnées communes : {video.metadata_communes}")
         print(f"   Métadonnées propres : {video.metadata_propres}")
         
-        # Métadonnées communes
+        # Métadonnées communes (affichage lecture seule)
         self.meta_communes_fields['system'].setText(video.metadata_communes.get('system', ''))
         self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
         self.meta_communes_fields['model'].setText(video.metadata_communes.get('model', ''))
         self.meta_communes_fields['version'].setText(video.metadata_communes.get('version', ''))
         
-        # Métadonnées propres
-        self.meta_propres_fields['campaign'].setText(video.metadata_propres.get('campaign', ''))
-        self.meta_propres_fields['zone'].setText(video.metadata_propres.get('zone', ''))
-        self.meta_propres_fields['zoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
+        # Métadonnées propres (afficher TOUTES dynamiquement)
+        self.remplir_metadonnees_propres(video.metadata_propres)
         
-        # Lancer l'extraction des 6 miniatures/GIFs (code branche romain)
+        # Activer le bouton "Modifier" maintenant qu'une vidéo est sélectionnée
+        if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+            self.btn_modifier_propres.setEnabled(True)
+        
+        # Lancer l'extraction des 6 miniatures/GIFs (avec gestion d'erreur FFmpeg)
         if self.controller:
             self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
-            self.lancer_extraction_previews(video.chemin, self.current_seek_info)
+            try:
+                self.lancer_extraction_previews(video.chemin, self.current_seek_info)
+            except Exception as e:
+                print("⚠️ Aperçus vidéo non disponibles (FFmpeg requis)")
+                # Les métadonnées fonctionnent sans les aperçus !
     
     def on_renommer(self):
         if not self.video_selectionnee:
@@ -831,34 +877,53 @@ class TriKosmosView(QWidget):
             else:
                 QMessageBox.critical(self, "Erreur", "Impossible de supprimer la vidéo.")
     
-    def on_modifier_metadata_communes(self):
-        if self.video_selectionnee and self.controller:
-            nouvelles_meta = {
-                'system': self.meta_communes_fields['system'].text(),
-                'camera': self.meta_communes_fields['camera'].text(),
-                'model': self.meta_communes_fields['model'].text(),
-                'version': self.meta_communes_fields['version'].text()
-            }
-            
-            if self.controller.modifier_metadonnees_communes(self.video_selectionnee.nom, nouvelles_meta):
-                QMessageBox.information(self, "Succès", "Métadonnées communes modifiées et sauvegardées!")
-                print(f"✅ Métadonnées communes sauvegardées")
-            else:
-                QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+
     
+    # Bouton "Modifier" pour métadonnées propres - bascule entre édition et sauvegarde
     def on_modifier_metadata_propres(self):
-        if self.video_selectionnee and self.controller:
-            nouvelles_meta = {
-                'campaign': self.meta_propres_fields['campaign'].text(),
-                'zone': self.meta_propres_fields['zone'].text(),
-                'zone_dict': self.meta_propres_fields['zoneDict'].text()
-            }
+        if not (self.video_selectionnee and self.controller):
+            return
+
+        # Si pas encore en édition → activer l’édition
+        if not self.edit_propres:
+            for w in self.meta_propres_fields.values():
+                w.setReadOnly(False)
+            self.edit_propres = True
+            # changer le libellé du bouton à "Enregistrer"
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+                
+                self.btn_modifier_propres.setText("OK")
+                self.btn_modifier_propres.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
+            return
+
+        # Déjà en édition → sauvegarder toutes les métadonnées propres
+        if not self.video_selectionnee:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Aucune vidéo sélectionnée", "Veuillez sélectionner une vidéo avant de valider.")
+            return
+
+        # Collecter les métadonnées des champs
+        nouvelles_meta = {}
+        for key, widget in self.meta_propres_fields.items():
+            nouvelles_meta[key] = widget.text()
+        
+        # Sauvegarder via le contrôleur
+        ok = self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta)
+
+        if ok:
+            # Afficher le message de succès
+            self.controller.show_success_dialog(self)
             
-            if self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta):
-                QMessageBox.information(self, "Succès", "Métadonnées propres modifiées et sauvegardées!")
-                print(f"✅ Métadonnées propres sauvegardées")
-            else:
-                QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+            # repasser en lecture seule
+            for w in self.meta_propres_fields.values():
+                w.setReadOnly(True)
+            self.edit_propres = False
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+                self.btn_modifier_propres.setText("Modifier")
+                self.btn_modifier_propres.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées dans le fichier JSON")
 
 
 # TEST
