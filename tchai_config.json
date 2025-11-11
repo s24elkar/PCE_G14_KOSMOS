@@ -44,7 +44,7 @@
                 "meteoMerDict_seaState": "",
                 "meteoMerDict_swell": "",
                 "stationDict_codestation": "CC250113",
-                "stationDict_increment": "0113"
+                "stationDict_increment": "113"
             },
             "est_conservee": true,
             "start_time_str": "11:26:27"

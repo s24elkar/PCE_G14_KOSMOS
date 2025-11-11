@@ -419,6 +419,9 @@ class TriKosmosView(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         
+        # DÉSACTIVER L'ÉDITION DIRECTE DANS LA TABLE
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        
         self.table.setStyleSheet("""
             QTableWidget { background-color: black; color: white; border: 2px solid white; gridline-color: #555; font-size: 11px; }
             QTableWidget::item { padding: 4px; border-bottom: 1px solid #333; }
