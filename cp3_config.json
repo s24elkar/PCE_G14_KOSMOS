@@ -1,12 +1,12 @@
 {
-    "nom": "cp1",
+    "nom": "cp3",
     "emplacement": "C:/Projet-KOSMOS",
-    "date_creation": "2025-11-06 08:42:57",
-    "date_modification": "2025-11-06 08:43:13",
+    "date_creation": "2025-11-10 11:24:43",
+    "date_modification": "2025-11-10 11:24:54",
     "videos": [
         {
             "nom": "0113.mp4",
-            "chemin": "D:/250821_Kstereo\\0113\\0113.mp4",
+            "chemin": "C:/250821_Kstereo\\0113\\0113.mp4",
             "dossier_numero": "0113",
             "taille": "1.5 Go",
             "duree": "--:--",
@@ -20,14 +20,20 @@
             "metadata_propres": {
                 "campaign": "ATL",
                 "zone": "CC",
-                "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
+                "locality": "Glenan",
+                "protection": "N2000",
+                "date": "2025-08-21",
+                "boat": "Enezeg",
+                "pilot": "Ewenn",
+                "crew": "OF DP MLC",
+                "partners": "Halgo Rdt Kal"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "11:26:27"
         },
         {
             "nom": "0114.mp4",
-            "chemin": "D:/250821_Kstereo\\0114\\0114.mp4",
+            "chemin": "C:/250821_Kstereo\\0114\\0114.mp4",
             "dossier_numero": "0114",
             "taille": "1.1 Go",
             "duree": "--:--",
@@ -44,11 +50,11 @@
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "11:44:16"
         },
         {
             "nom": "0115.mp4",
-            "chemin": "D:/250821_Kstereo\\0115\\0115.mp4",
+            "chemin": "C:/250821_Kstereo\\0115\\0115.mp4",
             "dossier_numero": "0115",
             "taille": "1.1 Go",
             "duree": "--:--",
@@ -65,11 +71,11 @@
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "12:01:37"
         },
         {
             "nom": "0116.mp4",
-            "chemin": "D:/250821_Kstereo\\0116\\0116.mp4",
+            "chemin": "C:/250821_Kstereo\\0116\\0116.mp4",
             "dossier_numero": "0116",
             "taille": "1.2 Go",
             "duree": "--:--",
@@ -86,11 +92,11 @@
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "12:22:58"
         },
         {
             "nom": "0117.mp4",
-            "chemin": "D:/250821_Kstereo\\0117\\0117.mp4",
+            "chemin": "C:/250821_Kstereo\\0117\\0117.mp4",
             "dossier_numero": "0117",
             "taille": "1.3 Go",
             "duree": "--:--",
@@ -107,11 +113,11 @@
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "12:45:31"
         },
         {
             "nom": "0118.mp4",
-            "chemin": "D:/250821_Kstereo\\0118\\0118.mp4",
+            "chemin": "C:/250821_Kstereo\\0118\\0118.mp4",
             "dossier_numero": "0118",
             "taille": "1.1 Go",
             "duree": "--:--",
@@ -128,11 +134,11 @@
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "13:05:14"
         },
         {
             "nom": "0119.mp4",
-            "chemin": "D:/250821_Kstereo\\0119\\0119.mp4",
+            "chemin": "C:/250821_Kstereo\\0119\\0119.mp4",
             "dossier_numero": "0119",
             "taille": "1.3 Go",
             "duree": "--:--",
@@ -149,32 +155,32 @@
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "13:26:41"
         },
         {
             "nom": "0120.mp4",
-            "chemin": "D:/250821_Kstereo\\0120\\0120.mp4",
+            "chemin": "C:/250821_Kstereo\\0120\\0120.mp4",
             "dossier_numero": "0120",
             "taille": "1.3 Go",
             "duree": "--:--",
             "date": "21/08/2025",
             "metadata_communes": {
-                "system": "Kstereo",
-                "camera": "imx477",
-                "model": "Raspberry Pi 5 Model B Rev 1.0",
-                "version": "4.0"
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
             },
             "metadata_propres": {
-                "campaign": "ATL",
-                "zone": "CC",
-                "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "13:50:18"
         },
         {
             "nom": "0121.mp4",
-            "chemin": "D:/250821_Kstereo\\0121\\0121.mp4",
+            "chemin": "C:/250821_Kstereo\\0121\\0121.mp4",
             "dossier_numero": "0121",
             "taille": "1.4 Go",
             "duree": "--:--",
@@ -191,11 +197,11 @@
                 "zone_dict": ""
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "14:13:22"
         },
         {
             "nom": "0122.mp4",
-            "chemin": "D:/250821_Kstereo\\0122\\0122.mp4",
+            "chemin": "C:/250821_Kstereo\\0122\\0122.mp4",
             "dossier_numero": "0122",
             "taille": "1.1 Go",
             "duree": "--:--",
@@ -212,11 +218,11 @@
                 "zone_dict": ""
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "14:32:32"
         },
         {
             "nom": "0123.mp4",
-            "chemin": "D:/250821_Kstereo\\0123\\0123.mp4",
+            "chemin": "C:/250821_Kstereo\\0123\\0123.mp4",
             "dossier_numero": "0123",
             "taille": "1.1 Go",
             "duree": "--:--",
@@ -233,32 +239,32 @@
                 "zone_dict": ""
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "14:52:32"
         },
         {
             "nom": "0124.mp4",
-            "chemin": "D:/250821_Kstereo\\0124\\0124.mp4",
+            "chemin": "C:/250821_Kstereo\\0124\\0124.mp4",
             "dossier_numero": "0124",
             "taille": "1.0 Go",
             "duree": "--:--",
             "date": "21/08/2025",
             "metadata_communes": {
-                "system": "",
-                "camera": "",
-                "model": "",
-                "version": ""
+                "system": "Kstereo",
+                "camera": "imx477",
+                "model": "Raspberry Pi 5 Model B Rev 1.0",
+                "version": "4.0"
             },
             "metadata_propres": {
-                "campaign": "",
-                "zone": "",
-                "zone_dict": ""
+                "campaign": "ATL",
+                "zone": "CC",
+                "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
             "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "start_time_str": "15:16:56"
         },
         {
-            "nom": "0125.mp4",
-            "chemin": "D:/250821_Kstereo\\0125\\0125.mp4",
+            "nom": "01299.mp4",
+            "chemin": "C:/250821_Kstereo\\0125\\0125.mp4",
             "dossier_numero": "0125",
             "taille": "1.1 Go",
             "duree": "--:--",
@@ -274,8 +280,8 @@
                 "zone": "CC",
                 "zone_dict": "{'campaign': 'ATL', 'zone': 'CC', 'locality': 'Glenan', 'protection': 'N2000'}"
             },
-            "est_conservee": true,
-            "start_time_str": "00:00:00"
+            "est_conservee": false,
+            "start_time_str": "15:35:07"
         }
     ]
 }

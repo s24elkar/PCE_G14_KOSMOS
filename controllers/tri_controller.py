@@ -1,10 +1,12 @@
 """
 CONTRÔLEUR - Page de tri KOSMOS
 Architecture MVC
+Gère la suppression définitive des vidéos
 """
 import sys
 import csv
 import json
+import os
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from datetime import datetime
@@ -32,7 +34,6 @@ class TriKosmosController(QObject):
         video = self.model.selectionner_video(nom_video)
         if video:
             self.video_selectionnee.emit(video)
-        # Fallback : essayer avec le nom de fichier de base si pas trouvé directement
         else:
             try:
                 base = Path(str(nom_video)).name
@@ -51,9 +52,42 @@ class TriKosmosController(QObject):
         """Marque une vidéo comme conservée"""
         return self.model.conserver_video(nom_video)
     
-    def supprimer_video(self, nom_video: str):
-        """Marque une vidéo pour suppression"""
-        return self.model.marquer_video_pour_suppression(nom_video)
+    def supprimer_video(self, nom_video: str) -> bool:
+        """Supprime définitivement une vidéo (fichier + liste)"""
+        try:
+            # Récupérer la vidéo
+            video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
+            
+            if not video:
+                print(f"❌ Vidéo non trouvée: {nom_video}")
+                return False
+            
+            chemin_fichier = Path(video.chemin)
+            
+            # 1. Supprimer le fichier physique
+            if chemin_fichier.exists():
+                try:
+                    os.remove(chemin_fichier)
+                    print(f"🗑️ Fichier supprimé: {chemin_fichier}")
+                except Exception as e:
+                    print(f"❌ Erreur suppression fichier: {e}")
+                    return False
+            else:
+                print(f"⚠️ Fichier déjà supprimé ou introuvable: {chemin_fichier}")
+            
+            # 2. Supprimer de la liste de la campagne
+            self.model.campagne_courante.supprimer_video(nom_video)
+            print(f"✅ Vidéo retirée de la campagne: {nom_video}")
+            
+            # 3. Désélectionner si c'était la vidéo sélectionnée
+            if self.model.video_selectionnee and self.model.video_selectionnee.nom == nom_video:
+                self.model.video_selectionnee = None
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur suppression vidéo: {e}")
+            return False
     
     def charger_metadonnees_depuis_json(self, video) -> bool:
         """Charge uniquement les métadonnées propres à la vidéo depuis le fichier JSON existant"""
@@ -191,79 +225,16 @@ class TriKosmosController(QObject):
                 except Exception:
                     pass
             
-            # Vérification que le fichier a bien été modifié
-            if json_path.exists():
-                file_size = json_path.stat().st_size
-                mod_time = datetime.fromtimestamp(json_path.stat().st_mtime).strftime("%H:%M:%S")
-                print(f"✅ Métadonnées vidéo sauvegardées dans: {json_path}")
-                print(f"   📄 Taille du fichier: {file_size} octets")
-                print(f"   🕒 Heure de modification: {mod_time}")
-                
-                # Vérifier que les données ont bien été écrites
-                try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
-                        verification_data = json.load(f)
-                    
-                    video_count = len(verification_data.get('video', {}))
-                    print(f"   🔍 Sections video vérifiées: {video_count} sections trouvées")
-                    
-                    # Afficher quelques exemples de métadonnées sauvegardées
-                    if 'video' in verification_data:
-                        for section_name, section_data in list(verification_data['video'].items())[:3]:
-                            if isinstance(section_data, dict) and section_data:
-                                example_key = list(section_data.keys())[0]
-                                example_value = section_data[example_key]
-                                print(f"   📝 Exemple - {section_name}.{example_key}: {example_value}")
-                
-                except Exception as e:
-                    print(f"   ⚠️ Erreur vérification: {e}")
-                    
+            print(f"✅ Métadonnées vidéo sauvegardées dans: {json_path}")
             return True
             
         except Exception as e:
             print(f"❌ Erreur sauvegarde JSON: {e}")
             return False
-    
-    def creer_structure_json_vide(self) -> dict:
-        """Crée une structure JSON vide avec les sections par défaut"""
-        return {
-            "system": {
-                "system": "",
-                "camera": "",
-                "model": "",
-                "version": ""
-            },
-            "campaign": {
-                "zoneDict": {
-                    "campaign": "",
-                    "zone": ""
-                },
-                "video": {
-                    "analyseDict": {},
-                    "astroDict": {},
-                    "ctdDict": {},
-                    "gpsDict": {},
-                    "hourDict": {},
-                    "meteoAirDict": {},
-                    "meteoMerDict": {},
-                    "stationDict": {}
-                }
-            }
-        }
-    
-    def creer_json_defaut(self, json_path: Path):
-        """Crée un fichier JSON par défaut s'il n'existe pas"""
-        try:
-            data = self.creer_structure_json_vide()
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            print(f"📄 Fichier JSON par défaut créé: {json_path}")
-        except Exception as e:
-            print(f"❌ Erreur création JSON par défaut: {e}")
 
     def modifier_metadonnees_propres(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """Modifie uniquement les métadonnées propres à la vidéo (section video du JSON)"""
-        video = self.model.campagne_courante.obtenir_video(nom_video)
+        video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
         if video:
             # Mettre à jour les métadonnées propres
             for key, value in metadonnees.items():
@@ -274,52 +245,9 @@ class TriKosmosController(QObject):
     
     def get_video_by_name(self, nom_video: str):
         """Retourne l'objet vidéo via le modèle courant."""
-        getter = getattr(self.model.campagne_courante, "obtenir_video", None)
-        return getter(nom_video) if callable(getter) else None
-
-    def get_metadata(self, nom_video: str):
-        """Retourne (communes: dict, propres: dict) pour affichage dans la vue."""
-        v = self.get_video_by_name(nom_video)
-        if not v:
-            return {}, {}
-        commons = getattr(v, "metadata_communes", {}) or {}
-        specifics = getattr(v, "metadata_propres", {}) or {}
-        return commons, specifics
-    
-    def obtenir_premiere_video(self):
-        """Retourne la première vidéo de la liste pour l'affichage initial"""
-        videos = self.obtenir_videos()
-        if videos:
-            return videos[0]
-        return None
-    
-    def obtenir_toutes_metadonnees(self, nom_video: str):
-        """Retourne toutes les métadonnées (communes + propres) d'une vidéo"""
-        video = self.get_video_by_name(nom_video)
-        if not video:
-            return {}
-        
-        # Fusionner toutes les métadonnées avec préfixe pour éviter les conflits
-        toutes_meta = {}
-        
-        # Métadonnées communes
-        meta_communes = getattr(video, "metadata_communes", {}) or {}
-        for key, value in meta_communes.items():
-            toutes_meta[f"communes_{key}"] = value
-            
-        # Métadonnées propres  
-        meta_propres = getattr(video, "metadata_propres", {}) or {}
-        for key, value in meta_propres.items():
-            toutes_meta[f"propres_{key}"] = value
-            
-        # Informations de base de la vidéo
-        toutes_meta["nom"] = getattr(video, "nom", "")
-        toutes_meta["chemin"] = getattr(video, "chemin", "")
-        toutes_meta["taille"] = getattr(video, "taille", "")
-        toutes_meta["duree"] = getattr(video, "duree", "")
-        toutes_meta["date"] = getattr(video, "date", "")
-        
-        return toutes_meta
+        if not self.model.campagne_courante:
+            return None
+        return self.model.campagne_courante.obtenir_video(nom_video)
 
     def get_angle_seek_times(self, nom_video: str):
         """
@@ -328,168 +256,16 @@ class TriKosmosController(QObject):
         Par défaut : 1 point toutes les 30s, GIF de 3s.
         """
         seek = []
-        for i in range(6):  # 0..5
+        for i in range(6):
             t = i * 30
             h = t // 3600
             m = (t % 3600) // 60
             s = t % 60
             seek.append((f"{h:02d}:{m:02d}:{s:02d}", 3))
         return seek
-    
-    def sauvegarder_csv(self, video, create_if_missing: bool = True) -> bool:
-        """ Met à jour dans <dossier>/<dossier_numero>.csv UNIQUEMENT la ligne correspondant à 'video'.
-        - Identifiant privilégié: colonne 'file' (nom de fichier). Fallbacks: 'filename', 'name', 'path', 'video'.
-        - create_if_missing=True : crée un CSV minimal si absent (file, path, label + colonnes présentes dans les métadonnées).
-        - Écriture atomique pour éviter la corruption.
-        """
-        try:
-            if not getattr(video, "chemin", None):
-                print("❌ Erreur sauvegarde CSV: video.chemin manquant")
-                return False
-
-            dossier = Path(video.chemin).parent
-            dossier_num = getattr(video, "dossier_numero", None) or dossier.name
-            csv_path = dossier / f"{dossier_num}.csv"
-
-            meta_communes = getattr(video, "metadata_communes", {}) or {}
-            meta_propres  = getattr(video, "metadata_propres", {}) or {}
-            label_val     = getattr(video, "label", "") or ""
-
-            # 1) Création si le CSV n'existe pas
-            if not csv_path.exists():
-                if not create_if_missing:
-                    print(f"⚠️ CSV non trouvé: {csv_path}")
-                    return False
-
-                base_fields  = ["file", "path", "label"]
-                extra_fields = sorted(set(list(meta_communes.keys()) + list(meta_propres.keys())))
-                fieldnames   = base_fields + extra_fields
-
-                from tempfile import NamedTemporaryFile
-                tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8", newline="")
-                try:
-                    with tmp as tf:
-                        writer = csv.DictWriter(tf, fieldnames=fieldnames)
-                        writer.writeheader()
-
-                        row = {k: "" for k in fieldnames}
-                        row["file"]  = Path(video.chemin).name
-                        row["path"]  = str(Path(video.chemin).resolve())
-                        row["label"] = str(label_val or "")
-
-                        for k, v in meta_communes.items():
-                            if k in row:
-                                row[k] = str(v or "")
-                        for k, v in meta_propres.items():
-                            if k in row:
-                                row[k] = str(v or "")
-
-                        writer.writerow(row)
-
-                    Path(tmp.name).replace(csv_path)
-                finally:
-                    try:
-                        Path(tmp.name).unlink(missing_ok=True)
-                    except Exception:
-                        pass
-
-                print(f"🆕 CSV créé: {csv_path}")
-                return True
-
-            # 2) Lecture & mise à jour d'un CSV existant
-            with open(csv_path, "r", encoding="utf-8", newline="") as f:
-                reader = csv.DictReader(f)
-                fieldnames = list(reader.fieldnames or [])  # Convertir en liste modifiable
-                rows = list(reader)
-
-            filename = Path(video.chemin).name
-            path_abs = str(Path(video.chemin).resolve())
-            # Priorité aux colonnes standards, puis colonnes spécialisées (HMS, TStamp, etc.)
-            candidates = [
-                ("file", filename),
-                ("filename", filename),
-                ("name", filename),
-                ("video", filename),
-                ("path", path_abs),
-                ("HMS", ""),  # Colonne temps pour données scientifiques
-                ("TStamp", ""), # Timestamp pour données d'acquisition
-            ]
-
-            key_field = key_value = None
-            for k, v in candidates:
-                if k in fieldnames:
-                    if v:  # Si on a une valeur à chercher
-                        key_field, key_value = k, v
-                        break
-                    elif k in ["HMS", "TStamp"]:  # Colonnes scientifiques : utiliser comme identifiant principal
-                        key_field = k
-                        # Pour les données scientifiques, on ajoute toujours une nouvelle ligne
-                        key_value = f"nouvelle_entree_{len(rows)}"
-                        break
-            
-            # Si aucun champ identifiant trouvé, ajouter la colonne 'file' au CSV
-            if not key_field:
-                print(f"⚠️ Aucun champ identifiant trouvé dans {csv_path}. Ajout de la colonne 'file'.")
-                fieldnames.append('file')
-                key_field, key_value = 'file', filename
-                # Ajouter la colonne 'file' à toutes les lignes existantes
-                for row in rows:
-                    row['file'] = ""
-
-            found = False
-            new_rows = []
-            for row in rows:
-                if str(row.get(key_field, "")).strip() == str(key_value or "").strip():
-                    # Mettre à jour uniquement les colonnes existantes
-                    for k, v in meta_communes.items():
-                        if k in row:
-                            row[k] = str(v or "")
-                    for k, v in meta_propres.items():
-                        if k in row:
-                            row[k] = str(v or "")
-                    new_rows.append(row)
-                    found = True
-                else:
-                    new_rows.append(row)
-
-            # Si aucune ligne trouvée → en ajouter une
-            if not found:
-                base = {k: "" for k in fieldnames}
-                base[key_field] = str(key_value or "")
-                for k, v in meta_communes.items():
-                    if k in base:
-                        base[k] = str(v or "")
-                for k, v in meta_propres.items():
-                    if k in base:
-                        base[k] = str(v or "")
-                new_rows.append(base)
-
-            # Écriture atomique
-            from tempfile import NamedTemporaryFile
-            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8", newline="")
-            try:
-                with tmp as tf:
-                    writer = csv.DictWriter(tf, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(new_rows)
-                Path(tmp.name).replace(csv_path)
-            finally:
-                try:
-                    Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
-
-            print(f"✅ CSV sauvegardé: {csv_path}")
-            return True
-
-        except Exception as e:
-            print(f"❌ Erreur sauvegarde CSV: {e}")
-            return False
 
     def show_success_dialog(self, parent_view):
-        """
-        Affiche une boîte de dialogue de confirmation après modification des métadonnées.
-        """
+        """Affiche une boîte de dialogue de confirmation après modification des métadonnées"""
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(
             parent_view,

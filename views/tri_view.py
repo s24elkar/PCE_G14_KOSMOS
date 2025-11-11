@@ -1,8 +1,7 @@
 """
 VUE - Page de tri KOSMOS
 Architecture MVC - Vue uniquement
-Affiche les 6 angles de la vidéo sélectionnée (toutes les 30s)
-Lecture vidéo au survol + Métadonnées depuis JSON
+Champs read-only par défaut / Suppression définitive des vidéos
 """
 import sys
 import os
@@ -18,7 +17,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
     QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog, QScrollArea
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
 from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie
 
 # Import du contrôleur
@@ -89,21 +88,18 @@ class DialogueRenommer(QDialog):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CLASSE WIDGET MINIATURE ANIMÉE (Code branche romain)
+# WIDGET MINIATURE ANIMÉE
 # ═══════════════════════════════════════════════════════════════
 
 class AnimatedThumbnailLabel(QLabel):
-    """
-    QLabel personnalisé qui gère l'affichage d'un Pixmap statique
-    et le remplace par un QMovie animé lors du survol.
-    """
+    """QLabel personnalisé qui gère l'affichage d'un Pixmap statique et le remplace par un QMovie animé lors du survol"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.static_pixmap = None
         self.animated_movie = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
-        self.setText("🔄")  # Symbole de chargement initial
+        self.setText("🔄")
     
     def set_static_pixmap(self, pixmap):
         """Définit l'image statique (miniature)"""
@@ -119,18 +115,17 @@ class AnimatedThumbnailLabel(QLabel):
             self.animated_movie.setCacheMode(QMovie.CacheMode.CacheAll)
     
     def enterEvent(self, event):
-        """Souris entre : joue le GIF"""
+        """Survol : joue le GIF"""
         if self.animated_movie:
             self.setMovie(self.animated_movie)
             self.animated_movie.start()
         super().enterEvent(event)
     
     def leaveEvent(self, event):
-        """Souris sort : arrête le GIF et remet l'image statique"""
+        """Sortie survol : arrête le GIF et remet l'image statique"""
         if self.animated_movie:
             self.animated_movie.stop()
         
-        # Correction anti-plantage (TypeNone)
         if self.static_pixmap:
             self.setPixmap(self.static_pixmap)
         else:
@@ -141,21 +136,15 @@ class AnimatedThumbnailLabel(QLabel):
 
 
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DE MINIATURES (THREAD) (Code branche romain)
+# EXTRACTION DE MINIATURES (THREAD)
 # ═══════════════════════════════════════════════════════════════
 
 class PreviewExtractorThread(QThread):
-    """
-    Thread pour extraire une miniature STATIQUE et un GIF ANIMÉ
-    """
+    """Thread pour extraire une miniature STATIQUE et un GIF ANIMÉ"""
     thumbnail_ready = pyqtSignal(int, QPixmap)
-    # Émet un 'str' (chemin du GIF) au lieu d'un QMovie
     gif_ready = pyqtSignal(int, str)
     
     def __init__(self, video_path, seek_info: list, parent=None):
-        """
-        seek_info est une liste de tuples: [(start_time_str, duration_sec), ...]
-        """
         super().__init__(parent)
         self.video_path = video_path
         self.seek_info = seek_info 
@@ -192,29 +181,16 @@ class PreviewExtractorThread(QThread):
             if not pixmap.isNull():
                 return pixmap
         
-        cmd = [
-            'ffmpeg', '-ss', seek_time, '-i', self.video_path,
-            '-vframes', '1', '-vf', 'scale=320:-1', 
-            '-q:v', '3', '-y', str(output_path)
-        ]
+        cmd = ['ffmpeg', '-ss', seek_time, '-i', self.video_path, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '3', '-y', str(output_path)]
         try:
-            result = subprocess.run(cmd, 
-                                    stdout=subprocess.DEVNULL, 
-                                    stderr=subprocess.PIPE, 
-                                    timeout=5, 
-                                    text=True, 
-                                    encoding='utf-8')
-            if result.returncode != 0:
-                print(f"❌ Erreur FFmpeg (thumb) - Commande: {' '.join(cmd)}")
-                print(f"   Erreur: {result.stderr}")
-
+            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=5, text=True, encoding='utf-8')
             if output_path.exists():
                 return QPixmap(str(output_path))
         except FileNotFoundError:
-             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
-             self.stop()
+            print("❌ ffmpeg n'est pas trouvé")
+            self.stop()
         except Exception as e:
-            print(f"Erreur Python (thumb): {e}")
+            print(f"Erreur extraction miniature: {e}")
         return None
 
     def extract_gif(self, seek_time, duration: int, output_path) -> bool:
@@ -223,37 +199,18 @@ class PreviewExtractorThread(QThread):
             if temp_movie.isValid():
                 return True
         
-        # Filtre vidéo : fps=10, scale=320px, et setpts=0.5*PTS (accélération x2)
         video_filter = f'fps=10,scale=320:-1:flags=lanczos,setpts=0.5*PTS'
+        cmd = ['ffmpeg', '-ss', seek_time, '-t', str(duration), '-i', self.video_path, '-vf', video_filter, '-y', str(output_path)]
         
-        cmd = [
-            'ffmpeg',
-            '-ss', seek_time,
-            '-t', str(duration),
-            '-i', self.video_path,
-            '-vf', video_filter,
-            '-y',
-            str(output_path)
-        ]
         try:
-            result = subprocess.run(cmd, 
-                                    stdout=subprocess.DEVNULL, 
-                                    stderr=subprocess.PIPE, 
-                                    timeout=15, 
-                                    text=True, 
-                                    encoding='utf-8')
-            if result.returncode != 0:
-                print(f"❌ Erreur FFmpeg (gif) - Commande: {' '.join(cmd)}")
-                print(f"   Erreur: {result.stderr}")
-                return False
-            
+            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=15, text=True, encoding='utf-8')
             if output_path.exists():
                 return True
         except FileNotFoundError:
-             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
-             self.stop()
+            print("❌ ffmpeg n'est pas trouvé")
+            self.stop()
         except Exception as e:
-            print(f"Erreur Python (gif): {e}")
+            print(f"Erreur extraction GIF: {e}")
         return False
 
 
@@ -494,7 +451,7 @@ class TriKosmosView(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
         
-        # APERÇU DES ANGLES (Code branche romain)
+        # APERÇU DES ANGLES
         apercu_container = QFrame()
         apercu_container.setStyleSheet("background-color: black; border: 2px solid white;")
         apercu_layout = QVBoxLayout()
@@ -532,21 +489,19 @@ class TriKosmosView(QWidget):
         
         layout.addWidget(apercu_container, stretch=1)
         
-        # MÉTADONNÉES - DEUX SECTIONS
+        # MÉTADONNÉES
         meta_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Métadonnées communes (lecture seule)
+        # Métadonnées communes (lecture seule toujours)
         meta_communes_widget = self.create_metadata_section("Métadonnées communes", readonly=True, type_meta="communes")
         meta_splitter.addWidget(meta_communes_widget)
         
-        # Métadonnées propres (modification possible)
+        # Métadonnées propres (lecture seule par défaut, éditable avec bouton)
         meta_propres_widget = self.create_metadata_section("Métadonnées propres", readonly=True, type_meta="propres")
         meta_splitter.addWidget(meta_propres_widget)
         
-        # Forcer les deux sections à avoir exactement la même taille
         meta_splitter.setStretchFactor(0, 1)
         meta_splitter.setStretchFactor(1, 1)
-        meta_splitter.setSizes([400, 400])  # Taille égale pour les deux panels
         
         layout.addWidget(meta_splitter, stretch=1)
         
@@ -575,25 +530,12 @@ class TriKosmosView(QWidget):
         if type_meta == "communes":
             self.meta_communes_fields = {}
             for key in ['system', 'camera', 'model', 'version']:
-                # Créer les champs en mode lecture seule pour les métadonnées communes
-                row = self.create_metadata_row(key, readonly=readonly)
+                # Lecture seule permanente pour les métadonnées communes
+                row = self.create_metadata_row(key, readonly=True)
                 self.meta_communes_fields[key] = row['widget']
                 content_layout.addWidget(row['container'])
             
             content_layout.addStretch()
-            
-            # Bouton "Modifier" décoratif pour les métadonnées communes (sans action)
-            btn_modifier_communes = QPushButton("Modifier")
-            btn_modifier_communes.setFixedSize(90, 26)
-            btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier_communes.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
-            
-            
-            btn_communes_layout = QHBoxLayout()
-            btn_communes_layout.addStretch()
-            btn_communes_layout.addWidget(btn_modifier_communes)
-            btn_communes_layout.setContentsMargins(0, 4, 0, 4)
-            content_layout.addLayout(btn_communes_layout)
             
         else:
             self.meta_propres_fields = {}
@@ -606,7 +548,6 @@ class TriKosmosView(QWidget):
             scroll_layout.setContentsMargins(5, 5, 5, 5)
             scroll_layout.setSpacing(3)
             
-            # Stocker le layout pour pouvoir y ajouter dynamiquement des champs
             self.meta_propres_scroll_layout = scroll_layout
             
             scroll_widget.setLayout(scroll_layout)
@@ -618,16 +559,12 @@ class TriKosmosView(QWidget):
             
             content_layout.addWidget(self.meta_propres_scroll_area)
             
-            # Supprimer addStretch() pour que le scroll_area prenne tout l'espace
-            
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_modifier.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn_modifier.clicked.connect(self.on_modifier_metadata_propres)
-            # Commencer désactivé jusqu'à sélection d'une vidéo
-            btn_modifier.setEnabled(False)
-            # Conserve une référence au bouton pour changer le libellé entre "Modifier" et "Sauvegarder"
+            btn_modifier.setEnabled(False)  # Désactivé jusqu'à sélection
             self.btn_modifier_propres = btn_modifier
             
             btn_layout = QHBoxLayout()
@@ -642,7 +579,6 @@ class TriKosmosView(QWidget):
         
         return container
     
-    # Création d'une ligne de métadonnée avec support lecture/édition
     def create_metadata_row(self, key, readonly=True):
         row_widget = QWidget()
         row_layout = QHBoxLayout()
@@ -655,7 +591,7 @@ class TriKosmosView(QWidget):
         row_layout.addWidget(label)
         
         value_widget = QLineEdit()
-        value_widget.setReadOnly(readonly)  # important pour mode lecture/édition
+        value_widget.setReadOnly(readonly)  # IMPORTANT: contrôle readonly
         value_widget.setStyleSheet("color: white; padding: 3px; background-color: #1a1a1a; border: 1px solid #555; font-size: 10px;")
         
         row_layout.addWidget(value_widget)
@@ -665,7 +601,6 @@ class TriKosmosView(QWidget):
     
     def remplir_metadonnees_propres(self, metadata_propres: dict):
         """Remplit dynamiquement la section des métadonnées propres"""
-        # Vider le layout existant
         self.vider_layout(self.meta_propres_scroll_layout)
         self.meta_propres_fields.clear()
         self.meta_propres_widgets.clear()
@@ -685,7 +620,7 @@ class TriKosmosView(QWidget):
         
         # Créer des sections organisées
         for section_name, fields in sections.items():
-            if not fields:  # Skip empty sections
+            if not fields:
                 continue
                 
             # Titre de section
@@ -693,17 +628,15 @@ class TriKosmosView(QWidget):
             section_label.setStyleSheet("color: white; font-weight: bold; font-size: 11px; padding: 5px 0px 2px 0px;")
             self.meta_propres_scroll_layout.addWidget(section_label)
             
-            # Champs de la section
+            # Champs de la section - LECTURE SEULE PAR DÉFAUT
             for field_name, value in fields.items():
                 full_key = f"{section_name}_{field_name}" if section_name != 'general' else field_name
-                row = self.create_metadata_row(field_name, readonly=True)
+                row = self.create_metadata_row(field_name, readonly=True)  # readonly=True par défaut
                 row['widget'].setText(str(value))
                 
                 self.meta_propres_fields[full_key] = row['widget']
                 self.meta_propres_widgets[full_key] = row['container']
                 self.meta_propres_scroll_layout.addWidget(row['container'])
-        
-        # Ne pas ajouter de stretch pour utiliser tout l'espace disponible
     
     def vider_layout(self, layout):
         """Vide complètement un layout"""
@@ -739,11 +672,8 @@ class TriKosmosView(QWidget):
             self.table.selectRow(0)
             self.controller.selectionner_video(videos[0].nom)
     
-
-    
     def lancer_extraction_previews(self, video_path, seek_info):
-        """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan."""
-        
+        """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan"""
         if self.preview_extractor and self.preview_extractor.isRunning():
             self.preview_extractor.stop()
             self.preview_extractor.wait()
@@ -755,30 +685,26 @@ class TriKosmosView(QWidget):
             thumb.set_animated_movie(None)
             thumb.static_pixmap = None
 
-        print(f"🎬 Lancement extraction previews pour {video_path}...")
+        print(f"🎬 Lancement extraction previews...")
         
         self.preview_extractor = PreviewExtractorThread(video_path, seek_info)
-        
         self.preview_extractor.thumbnail_ready.connect(self.afficher_miniature)
         self.preview_extractor.gif_ready.connect(self.stocker_gif_preview)
-        
         self.preview_extractor.start()
 
     def afficher_miniature(self, index, pixmap):
-        """Slot : Affiche une miniature statique extraite."""
+        """Slot : Affiche une miniature statique extraite"""
         if index < len(self.thumbnails):
             self.thumbnails[index].set_static_pixmap(pixmap)
             print(f"✅ Miniature statique {index+1} affichée")
     
     def stocker_gif_preview(self, index, gif_path: str):
-        """Slot : Crée et stocke le QMovie animé à partir du chemin du GIF."""
+        """Slot : Crée et stocke le QMovie animé à partir du chemin du GIF"""
         if index < len(self.thumbnails):
             movie = QMovie(gif_path)
             if movie.isValid():
                 self.thumbnails[index].set_animated_movie(movie)
                 print(f"✅ GIF animé {index+1} stocké")
-            else:
-                print(f"⚠️ GIF invalide reçu : {gif_path}")
     
     def on_video_selected(self):
         selected = self.table.selectedItems()
@@ -796,11 +722,7 @@ class TriKosmosView(QWidget):
         # Charger les métadonnées depuis le JSON via le contrôleur
         if self.controller:
             self.controller.charger_metadonnees_depuis_json(video)
-            # Charger aussi les métadonnées communes depuis le JSON
             self.controller.charger_metadonnees_communes_depuis_json(video)
-        
-        print(f"   Métadonnées communes : {video.metadata_communes}")
-        print(f"   Métadonnées propres : {video.metadata_propres}")
         
         # Métadonnées communes (affichage lecture seule)
         self.meta_communes_fields['system'].setText(video.metadata_communes.get('system', ''))
@@ -808,21 +730,25 @@ class TriKosmosView(QWidget):
         self.meta_communes_fields['model'].setText(video.metadata_communes.get('model', ''))
         self.meta_communes_fields['version'].setText(video.metadata_communes.get('version', ''))
         
-        # Métadonnées propres (afficher TOUTES dynamiquement)
+        # Métadonnées propres (afficher TOUTES dynamiquement en lecture seule)
         self.remplir_metadonnees_propres(video.metadata_propres)
         
         # Activer le bouton "Modifier" maintenant qu'une vidéo est sélectionnée
         if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
             self.btn_modifier_propres.setEnabled(True)
         
-        # Lancer l'extraction des 6 miniatures/GIFs (avec gestion d'erreur FFmpeg)
+        # Réinitialiser l'état d'édition
+        self.edit_propres = False
+        if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+            self.btn_modifier_propres.setText("Modifier")
+        
+        # Lancer l'extraction des 6 miniatures/GIFs
         if self.controller:
             self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
             try:
                 self.lancer_extraction_previews(video.chemin, self.current_seek_info)
             except Exception as e:
-                print("⚠️ Aperçus vidéo non disponibles (FFmpeg requis)")
-                # Les métadonnées fonctionnent sans les aperçus !
+                print(f"⚠️ Aperçus vidéo non disponibles: {e}")
     
     def on_renommer(self):
         if not self.video_selectionnee:
@@ -852,7 +778,7 @@ class TriKosmosView(QWidget):
                 if self.controller.renommer_video(self.video_selectionnee.nom, nouveau_nom):
                     QMessageBox.information(self, "Succès", f"Vidéo renommée en '{nouveau_nom}'")
                     self.charger_videos()
-                    print(f"✅ Vidéo renommée : {self.video_selectionnee.nom} → {nouveau_nom}")
+                    print(f"✅ Vidéo renommée")
                 else:
                     QMessageBox.critical(self, "Erreur", "Impossible de renommer la vidéo.")
     
@@ -864,66 +790,52 @@ class TriKosmosView(QWidget):
         reponse = QMessageBox.question(
             self,
             "Confirmer la suppression",
-            f"Voulez-vous vraiment supprimer la vidéo :\n\n'{self.video_selectionnee.nom}' ?\n\nCette action est irréversible.",
+            f"⚠️ ATTENTION : Cette action est IRRÉVERSIBLE !\n\nLa vidéo sera DÉFINITIVEMENT supprimée de votre disque dur :\n\n'{self.video_selectionnee.nom}'\n\nVoulez-vous continuer ?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         
         if reponse == QMessageBox.StandardButton.Yes:
             if self.controller.supprimer_video(self.video_selectionnee.nom):
-                QMessageBox.information(self, "Succès", f"Vidéo '{self.video_selectionnee.nom}' marquée pour suppression")
+                QMessageBox.information(self, "Succès", f"✅ Vidéo '{self.video_selectionnee.nom}' supprimée définitivement")
+                self.video_selectionnee = None
                 self.charger_videos()
-                print(f"🗑️ Vidéo supprimée : {self.video_selectionnee.nom}")
+                print(f"🗑️ Vidéo supprimée définitivement")
             else:
-                QMessageBox.critical(self, "Erreur", "Impossible de supprimer la vidéo.")
+                QMessageBox.critical(self, "Erreur", "❌ Impossible de supprimer la vidéo.")
     
-
-    
-    # Bouton "Modifier" pour métadonnées propres - bascule entre édition et sauvegarde
     def on_modifier_metadata_propres(self):
+        """Bouton Modifier - bascule entre mode lecture et mode édition"""
         if not (self.video_selectionnee and self.controller):
             return
 
-        # Si pas encore en édition → activer l’édition
+        # Si pas en édition → activer l'édition
         if not self.edit_propres:
             for w in self.meta_propres_fields.values():
                 w.setReadOnly(False)
             self.edit_propres = True
-            # changer le libellé du bouton à "Enregistrer"
             if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
-                
                 self.btn_modifier_propres.setText("OK")
-                self.btn_modifier_propres.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             return
 
-        # Déjà en édition → sauvegarder toutes les métadonnées propres
-        if not self.video_selectionnee:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Aucune vidéo sélectionnée", "Veuillez sélectionner une vidéo avant de valider.")
-            return
-
-        # Collecter les métadonnées des champs
+        # Déjà en édition → sauvegarder
         nouvelles_meta = {}
         for key, widget in self.meta_propres_fields.items():
             nouvelles_meta[key] = widget.text()
         
-        # Sauvegarder via le contrôleur
         ok = self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta)
 
         if ok:
-            # Afficher le message de succès
             self.controller.show_success_dialog(self)
             
-            # repasser en lecture seule
+            # Repasser en lecture seule
             for w in self.meta_propres_fields.values():
                 w.setReadOnly(True)
             self.edit_propres = False
             if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
                 self.btn_modifier_propres.setText("Modifier")
-                self.btn_modifier_propres.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
         else:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées dans le fichier JSON")
+            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
 
 
 # TEST

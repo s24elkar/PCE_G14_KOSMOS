@@ -1,0 +1,380 @@
+{
+    "nom": "tchai",
+    "emplacement": "C:/Projet-KOSMOS",
+    "date_creation": "2025-11-10 11:51:41",
+    "date_modification": "2025-11-11 10:50:04",
+    "videos": [
+        {
+            "nom": "0113.mp4",
+            "chemin": "C:/250821_Kstereo\\0113\\0113.mp4",
+            "dossier_numero": "0113",
+            "taille": "1.5 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "Kstereo",
+                "camera": "imx477",
+                "model": "Raspberry Pi 5 Model B Rev 1.0",
+                "version": "4.0"
+            },
+            "metadata_propres": {
+                "analyseDict_exploitability": "",
+                "analyseDict_fauna": "",
+                "analyseDict_habitat": "",
+                "analyseDict_visibility": "",
+                "astroDict_coefficient": "",
+                "astroDict_moon": "",
+                "astroDict_tide": "",
+                "ctdDict_depth": "",
+                "ctdDict_salinity": "",
+                "ctdDict_temperature": "",
+                "gpsDict_latitude": "0",
+                "gpsDict_longitude": "0",
+                "gpsDict_site": "",
+                "hourDict_HMSOS": "11:26:27",
+                "hourDict_hour": "11",
+                "hourDict_minute": "28",
+                "hourDict_second": "0",
+                "hourDict_ymdOS": "21/08/25",
+                "meteoAirDict_atmPress": "",
+                "meteoAirDict_direction": "",
+                "meteoAirDict_sky": "",
+                "meteoAirDict_tempAir": "",
+                "meteoAirDict_wind": "",
+                "meteoMerDict_seaState": "",
+                "meteoMerDict_swell": "",
+                "stationDict_codestation": "CC250113",
+                "stationDict_increment": "0113"
+            },
+            "est_conservee": true,
+            "start_time_str": "11:26:27"
+        },
+        {
+            "nom": "0114.mp4",
+            "chemin": "C:/250821_Kstereo\\0114\\0114.mp4",
+            "dossier_numero": "0114",
+            "taille": "1.1 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "Kstereo",
+                "camera": "imx477",
+                "model": "Raspberry Pi 5 Model B Rev 1.0",
+                "version": "4.0"
+            },
+            "metadata_propres": {
+                "analyseDict_exploitability": "",
+                "analyseDict_fauna": "",
+                "analyseDict_habitat": "",
+                "analyseDict_visibility": "",
+                "astroDict_coefficient": "",
+                "astroDict_moon": "",
+                "astroDict_tide": "",
+                "ctdDict_depth": "",
+                "ctdDict_salinity": "",
+                "ctdDict_temperature": "",
+                "gpsDict_latitude": "0",
+                "gpsDict_longitude": "0",
+                "gpsDict_site": "",
+                "hourDict_HMSOS": "11:44:16",
+                "hourDict_hour": "11",
+                "hourDict_minute": "46",
+                "hourDict_second": "0",
+                "hourDict_ymdOS": "21/08/25",
+                "meteoAirDict_atmPress": "",
+                "meteoAirDict_direction": "",
+                "meteoAirDict_sky": "",
+                "meteoAirDict_tempAir": "",
+                "meteoAirDict_wind": "",
+                "meteoMerDict_seaState": "",
+                "meteoMerDict_swell": "",
+                "stationDict_codestation": "CC250114",
+                "stationDict_increment": "114"
+            },
+            "est_conservee": true,
+            "start_time_str": "11:44:16"
+        },
+        {
+            "nom": "0115.mp4",
+            "chemin": "C:/250821_Kstereo\\0115\\0115.mp4",
+            "dossier_numero": "0115",
+            "taille": "1.1 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "Kstereo",
+                "camera": "imx477",
+                "model": "Raspberry Pi 5 Model B Rev 1.0",
+                "version": "4.0"
+            },
+            "metadata_propres": {
+                "analyseDict_exploitability": "",
+                "analyseDict_fauna": "",
+                "analyseDict_habitat": "",
+                "analyseDict_visibility": "",
+                "astroDict_coefficient": "",
+                "astroDict_moon": "",
+                "astroDict_tide": "",
+                "ctdDict_depth": "",
+                "ctdDict_salinity": "",
+                "ctdDict_temperature": "",
+                "gpsDict_latitude": "0",
+                "gpsDict_longitude": "0",
+                "gpsDict_site": "",
+                "hourDict_HMSOS": "12:01:37",
+                "hourDict_hour": "12",
+                "hourDict_minute": "3",
+                "hourDict_second": "0",
+                "hourDict_ymdOS": "21/08/25",
+                "meteoAirDict_atmPress": "",
+                "meteoAirDict_direction": "",
+                "meteoAirDict_sky": "",
+                "meteoAirDict_tempAir": "",
+                "meteoAirDict_wind": "",
+                "meteoMerDict_seaState": "",
+                "meteoMerDict_swell": "",
+                "stationDict_codestation": "CC250115",
+                "stationDict_increment": "0115"
+            },
+            "est_conservee": true,
+            "start_time_str": "12:01:37"
+        },
+        {
+            "nom": "0116.mp4",
+            "chemin": "C:/250821_Kstereo\\0116\\0116.mp4",
+            "dossier_numero": "0116",
+            "taille": "1.2 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "Kstereo",
+                "camera": "imx477",
+                "model": "Raspberry Pi 5 Model B Rev 1.0",
+                "version": "4.0"
+            },
+            "metadata_propres": {
+                "analyseDict_exploitability": "",
+                "analyseDict_fauna": "",
+                "analyseDict_habitat": "",
+                "analyseDict_visibility": "",
+                "astroDict_coefficient": "",
+                "astroDict_moon": "",
+                "astroDict_tide": "",
+                "ctdDict_depth": "",
+                "ctdDict_salinity": "",
+                "ctdDict_temperature": "17.2",
+                "gpsDict_latitude": "0",
+                "gpsDict_longitude": "0",
+                "gpsDict_site": "",
+                "hourDict_HMSOS": "12:22:58",
+                "hourDict_hour": "12",
+                "hourDict_minute": "24",
+                "hourDict_second": "0",
+                "hourDict_ymdOS": "21/08/25",
+                "meteoAirDict_atmPress": "1045.6",
+                "meteoAirDict_direction": "",
+                "meteoAirDict_sky": "",
+                "meteoAirDict_tempAir": "18.3",
+                "meteoAirDict_wind": "",
+                "meteoMerDict_seaState": "",
+                "meteoMerDict_swell": "",
+                "stationDict_codestation": "CC250116",
+                "stationDict_increment": "0116"
+            },
+            "est_conservee": true,
+            "start_time_str": "12:22:58"
+        },
+        {
+            "nom": "0117.mp4",
+            "chemin": "C:/250821_Kstereo\\0117\\0117.mp4",
+            "dossier_numero": "0117",
+            "taille": "1.3 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "12:45:31"
+        },
+        {
+            "nom": "0118.mp4",
+            "chemin": "C:/250821_Kstereo\\0118\\0118.mp4",
+            "dossier_numero": "0118",
+            "taille": "1.1 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "13:05:14"
+        },
+        {
+            "nom": "0119.mp4",
+            "chemin": "C:/250821_Kstereo\\0119\\0119.mp4",
+            "dossier_numero": "0119",
+            "taille": "1.3 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "13:26:41"
+        },
+        {
+            "nom": "0120.mp4",
+            "chemin": "C:/250821_Kstereo\\0120\\0120.mp4",
+            "dossier_numero": "0120",
+            "taille": "1.3 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "13:50:18"
+        },
+        {
+            "nom": "0121.mp4",
+            "chemin": "C:/250821_Kstereo\\0121\\0121.mp4",
+            "dossier_numero": "0121",
+            "taille": "1.4 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "14:13:22"
+        },
+        {
+            "nom": "0122.mp4",
+            "chemin": "C:/250821_Kstereo\\0122\\0122.mp4",
+            "dossier_numero": "0122",
+            "taille": "1.1 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "14:32:32"
+        },
+        {
+            "nom": "0123.mp4",
+            "chemin": "C:/250821_Kstereo\\0123\\0123.mp4",
+            "dossier_numero": "0123",
+            "taille": "1.1 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "",
+                "camera": "",
+                "model": "",
+                "version": ""
+            },
+            "metadata_propres": {
+                "campaign": "",
+                "zone": "",
+                "zone_dict": ""
+            },
+            "est_conservee": true,
+            "start_time_str": "14:52:32"
+        },
+        {
+            "nom": "01245.mp4",
+            "chemin": "C:/250821_Kstereo\\0124\\0124.mp4",
+            "dossier_numero": "0124",
+            "taille": "1.0 Go",
+            "duree": "--:--",
+            "date": "21/08/2025",
+            "metadata_communes": {
+                "system": "Kstereo",
+                "camera": "imx477",
+                "model": "Raspberry Pi 5 Model B Rev 1.0",
+                "version": "4.0"
+            },
+            "metadata_propres": {
+                "analyseDict_exploitability": "",
+                "analyseDict_fauna": "",
+                "analyseDict_habitat": "",
+                "analyseDict_visibility": "",
+                "astroDict_coefficient": "",
+                "astroDict_moon": "",
+                "astroDict_tide": "",
+                "ctdDict_depth": "",
+                "ctdDict_salinity": "",
+                "ctdDict_temperature": "17.2",
+                "gpsDict_latitude": "0",
+                "gpsDict_longitude": "0",
+                "gpsDict_site": "",
+                "hourDict_HMSOS": "15:16:56",
+                "hourDict_hour": "15",
+                "hourDict_minute": "18",
+                "hourDict_second": "0",
+                "hourDict_ymdOS": "21/08/25",
+                "meteoAirDict_atmPress": "1047.5",
+                "meteoAirDict_direction": "",
+                "meteoAirDict_sky": "",
+                "meteoAirDict_tempAir": "17.3",
+                "meteoAirDict_wind": "",
+                "meteoMerDict_seaState": "",
+                "meteoMerDict_swell": "",
+                "stationDict_codestation": "CC250124",
+                "stationDict_increment": "0124"
+            },
+            "est_conservee": true,
+            "start_time_str": "15:16:56"
+        }
+    ]
+}
