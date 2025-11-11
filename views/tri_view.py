@@ -1,14 +1,19 @@
 """
 VUE - Page de tri KOSMOS
 Architecture MVC - Vue uniquement
-VERSION 2.7 : Remplacement de QMediaPlayer par OpenCV (stable)
+Champs read-only par défaut / Suppression définitive des vidéos
 """
 import sys
 import os
+import json
 import subprocess
 from pathlib import Path
-import cv2 
+
+# --- AJOUTS OPENCV ---
+import cv2
+import numpy as np
 import time
+# --- FIN AJOUTS ---
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -16,33 +21,213 @@ sys.path.insert(0, str(project_root))
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
-    QGridLayout, QLineEdit, QMenu, QMessageBox
+    QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog, QScrollArea,
+    QSizePolicy, QApplication  # <-- Imports nécessaires
 )
-# Ajout de QEvent et QImage
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QUrl, QEvent
-from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QImage # <-- NOUVEL IMPORT
+# --- AJOUT QTimer et QImage ---
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QSize
+from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie, QImage
+# --- FIN AJOUT ---
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
 
 
 # ═══════════════════════════════════════════════════════════════
-# CLASSE WIDGET MINIATURE (SUPPRIMÉE)
+# DIALOGUE DE RENOMMAGE
 # ═══════════════════════════════════════════════════════════════
+
+class DialogueRenommer(QDialog):
+    """Dialogue pour renommer une vidéo"""
+    
+    def __init__(self, nom_actuel, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Renommer la vidéo")
+        self.setFixedSize(500, 200)
+        self.setStyleSheet("background-color: black;")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 20, 30, 20)
+        layout.setSpacing(15)
+        
+        titre = QLabel("Renommer la vidéo")
+        titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        titre.setStyleSheet("color: white; font-size: 18px; font-weight: bold; padding: 10px;")
+        layout.addWidget(titre)
+        
+        label_actuel = QLabel(f"Nom actuel : {nom_actuel}")
+        label_actuel.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(label_actuel)
+        
+        nom_layout = QHBoxLayout()
+        nom_label = QLabel("Nouveau nom :")
+        nom_label.setFixedWidth(120)
+        nom_label.setStyleSheet("color: white; font-size: 13px; font-weight: bold;")
+        
+        self.nom_edit = QLineEdit()
+        self.nom_edit.setText(nom_actuel)
+        self.nom_edit.setStyleSheet("background-color: white; color: black; border: 2px solid white; border-radius: 4px; padding: 6px; font-size: 13px;")
+        nom_layout.addWidget(nom_label)
+        nom_layout.addWidget(self.nom_edit)
+        layout.addLayout(nom_layout)
+        
+        layout.addStretch()
+        
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        btn_annuler = QPushButton("Annuler")
+        btn_annuler.setFixedSize(100, 35)
+        btn_annuler.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_annuler.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 12px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
+        btn_annuler.clicked.connect(self.reject)
+        
+        btn_ok = QPushButton("Renommer")
+        btn_ok.setFixedSize(100, 35)
+        btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ok.setStyleSheet("QPushButton { background-color: white; color: black; border: 2px solid white; border-radius: 4px; font-size: 12px; font-weight: bold; } QPushButton:hover { background-color: #f0f0f0; }")
+        btn_ok.clicked.connect(self.accept)
+        
+        buttons_layout.addWidget(btn_annuler)
+        buttons_layout.addWidget(btn_ok)
+        layout.addLayout(buttons_layout)
+    
+    def get_nouveau_nom(self):
+        return self.nom_edit.text().strip()
 
 
 # ═══════════════════════════════════════════════════════════════
-# THREAD D'EXTRACTION (Uniquement pour miniatures STATIQUES)
-# (INCHANGÉ)
+# WIDGET MINIATURE
 # ═══════════════════════════════════════════════════════════════
 
-class StaticThumbnailExtractor(QThread):
+class AnimatedThumbnailLabel(QLabel):
+    """QLabel personnalisé qui gère l'affichage d'un Pixmap statique et le remplace par une lecture OpenCV lors du survol"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.static_pixmap = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: black; border: none; color: #888;") # Pas de bordure, fond noir
+        self.setText("🔄")
+        
+        self.video_path = None
+        self.seek_time_sec = 0
+        self.duration_sec = 0
+        self.cap = None
+        self.playback_timer = QTimer(self)
+        self.playback_timer.timeout.connect(self.update_frame)
+        self.playback_start_time = 0
+        
+        self.setScaledContents(False) 
+    
+    def set_static_pixmap(self, pixmap):
+        """Définit l'image statique (miniature)"""
+        self.static_pixmap = pixmap
+        if not self.playback_timer.isActive():
+            self.setPixmap(self.static_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.setText("")
+    
+    def set_video_preview_info(self, video_path: str, seek_time_str: str, duration_sec: int):
+        """Stocke les informations pour la lecture OpenCV"""
+        self.video_path = video_path
+        self.duration_sec = duration_sec
+        
+        if video_path and seek_time_str:
+            try:
+                h, m, s = map(int, seek_time_str.split(':'))
+                self.seek_time_sec = h * 3600 + m * 60 + s
+            except Exception as e:
+                print(f"Erreur parsing seek time '{seek_time_str}': {e}")
+                self.seek_time_sec = 0
+        else:
+            self.seek_time_sec = 0
+
+    def enterEvent(self, event):
+        """Survol : démarre la lecture OpenCV"""
+        if self.video_path and not self.playback_timer.isActive():
+            try:
+                self.cap = cv2.VideoCapture(self.video_path)
+                if not self.cap.isOpened():
+                    print(f"Erreur ouverture vidéo: {self.video_path}")
+                    self.cap = None
+                    return
+                
+                self.cap.set(cv2.CAP_PROP_POS_MSEC, self.seek_time_sec * 1000)
+                self.playback_start_time = time.time()
+                self.playback_timer.start(33) 
+            except Exception as e:
+                print(f"Erreur démarrage OpenCV: {e}")
+                self.cap = None
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Sortie survol : arrête la lecture OpenCV et remet l'image statique"""
+        if self.playback_timer.isActive():
+            self.playback_timer.stop()
+        
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        
+        if self.static_pixmap:
+            self.setPixmap(self.static_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self.setPixmap(QPixmap())
+            self.setText("🔄")
+        
+        super().leaveEvent(event)
+
+    def update_frame(self):
+        """Slot pour le QTimer, lit et affiche une frame vidéo (MODIFIÉ POUR x2)"""
+        if not self.cap or not self.cap.isOpened():
+            self.leaveEvent(None) 
+            return
+
+        elapsed = time.time() - self.playback_start_time
+        if (elapsed * 2) > self.duration_sec:
+            self.leaveEvent(None) 
+            return
+
+        ret, _ = self.cap.read() 
+        if not ret:
+            self.leaveEvent(None) 
+            return
+        
+        ret, frame = self.cap.read() 
+        if not ret:
+            self.leaveEvent(None) 
+            return
+
+        try:
+            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_image.shape
+            bytes_per_line = ch * w
+            
+            q_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            
+            self.setPixmap(pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        except Exception as e:
+            print(f"Erreur conversion frame: {e}")
+            self.leaveEvent(None) 
+            
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.static_pixmap and not self.playback_timer.isActive():
+            self.setPixmap(self.static_pixmap.scaled(event.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXTRACTION DE MINIATURES (THREAD - SIMPLIFIÉ)
+# ═══════════════════════════════════════════════════════════════
+
+class PreviewExtractorThread(QThread):
+    """Thread pour extraire une miniature STATIQUE"""
     thumbnail_ready = pyqtSignal(int, QPixmap)
     
-    def __init__(self, video_path, seek_times: list[str], parent=None):
+    def __init__(self, video_path, seek_info: list, parent=None):
         super().__init__(parent)
         self.video_path = video_path
-        self.seek_times = seek_times
+        self.seek_info = seek_info 
         self.temp_dir = Path(video_path).parent / ".thumbnails"
         self.temp_dir.mkdir(exist_ok=True)
         self._is_running = True
@@ -51,10 +236,9 @@ class StaticThumbnailExtractor(QThread):
         self._is_running = False
 
     def run(self):
-        for idx, seek_time in enumerate(self.seek_times):
+        for idx, (seek_time, duration) in enumerate(self.seek_info):
             if not self._is_running:
                 break
-            
             try:
                 safe_seek_time = seek_time.replace(':', '')
                 thumb_path = self.temp_dir / f"thumb_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.jpg"
@@ -62,9 +246,9 @@ class StaticThumbnailExtractor(QThread):
                 pixmap = self.extract_thumbnail(seek_time, thumb_path)
                 if pixmap and self._is_running:
                     self.thumbnail_ready.emit(idx, pixmap)
-
+                
             except Exception as e:
-                print(f"⚠️ Erreur extraction miniature statique {idx}: {e}")
+                print(f"⚠️ Erreur extraction preview {idx}: {e}")
 
     def extract_thumbnail(self, seek_time, output_path):
         if output_path.exists():
@@ -72,109 +256,23 @@ class StaticThumbnailExtractor(QThread):
             if not pixmap.isNull():
                 return pixmap
         
-        cmd = [
-            'ffmpeg', '-ss', seek_time, '-i', self.video_path,
-            '-vframes', '1', '-vf', 'scale=400:-1', 
-            '-q:v', '3', '-y', str(output_path)
-        ]
+        cmd = ['ffmpeg', '-ss', seek_time, '-i', self.video_path, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '3', '-y', str(output_path)]
         try:
-            result = subprocess.run(cmd, 
-                                    stdout=subprocess.DEVNULL, 
-                                    stderr=subprocess.PIPE, 
-                                    timeout=10,
-                                    text=True, 
-                                    encoding='utf-8')
-            if result.returncode != 0:
-                print(f"❌ Erreur FFmpeg (thumb) - Commande: {' '.join(cmd)}")
-                print(f"   Erreur: {result.stderr}")
-
+            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=5, text=True, encoding='utf-8')
             if output_path.exists():
                 return QPixmap(str(output_path))
         except FileNotFoundError:
-             print("❌ ERREUR CRITIQUE : ffmpeg n'est pas trouvé. Vérifiez votre PATH système.")
-             self.stop()
+            print("❌ ffmpeg n'est pas trouvé")
+            self.stop()
         except Exception as e:
-            print(f"Erreur Python (thumb): {e}")
+            print(f"Erreur extraction miniature: {e}")
         return None
 
-# ═══════════════════════════════════════════════════════════════
-# NOUVEAU THREAD DE LECTURE (OpenCV)
-# ═══════════════════════════════════════════════════════════════
-
-class OpenCVPlayerThread(QThread):
-    """
-    Lit un clip vidéo avec OpenCV et envoie les images (QPixmap)
-    via un signal.
-    """
-    frame_ready = pyqtSignal(QPixmap)
-    
-    def __init__(self, video_path: str, start_ms: int, end_ms: int, speed: float = 4.0, parent=None):
-        super().__init__(parent)
-        self.video_path = video_path
-        self.start_ms = start_ms
-        self.end_ms = end_ms
-        self.speed = speed
-        self._is_running = True
-
-    def stop(self):
-        self._is_running = False
-
-    def run(self):
-        cap = cv2.VideoCapture(self.video_path)
-        if not cap.isOpened():
-            print(f"❌ Erreur OpenCV : Impossible d'ouvrir {self.video_path}")
-            return
-            
-        # Obtenir le FPS original pour calculer le saut de frame
-        original_fps = cap.get(cv2.CAP_PROP_FPS)
-        if original_fps == 0: original_fps = 25 # Fallback
-        
-        # Sauter au bon moment
-        cap.set(cv2.CAP_PROP_POS_MSEC, self.start_ms)
-        
-        # Calcul du 'sleep' pour simuler la vitesse x4
-        # (original_fps / self.speed) = nombre d'images à afficher par seconde
-        # 1000 / (...) = nombre de millisecondes entre chaque image
-        delay_ms = int(1000 / (original_fps * self.speed))
-        if delay_ms < 1: delay_ms = 1
-
-        while self._is_running:
-            current_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-            if current_ms >= self.end_ms:
-                break
-                
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            try:
-                # 1. Convertir l'image OpenCV (BGR) en RGB
-                rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # 2. Convertir l'image RGB en QImage
-                h, w, ch = rgb_image.shape
-                bytes_per_line = ch * w
-                q_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-                
-                # 3. Convertir QImage en QPixmap et l'émettre
-                pixmap = QPixmap.fromImage(q_image)
-                self.frame_ready.emit(pixmap)
-                
-                # 4. Attendre pour simuler la vitesse de lecture
-                self.msleep(delay_ms) 
-                
-            except Exception as e:
-                print(f"Erreur conversion frame: {e}")
-                
-        cap.release()
-
 
 # ═══════════════════════════════════════════════════════════════
-# NAVBAR (INCHANGÉE)
+# NAVBAR
 # ═══════════════════════════════════════════════════════════════
-
 class NavBarAvecMenu(QWidget):
-    # ... (code de la NavBar inchangé) ...
     tab_changed = pyqtSignal(str)
     nouvelle_campagne_clicked = pyqtSignal()
     ouvrir_campagne_clicked = pyqtSignal()
@@ -317,13 +415,7 @@ class NavBarAvecMenu(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CONTRÔLEUR (Section vide, OK)
-# ═══════════════════════════════════════════════════════════════
-
-
-
-# ═══════════════════════════════════════════════════════════════
-# VUE (MODIFIÉE - v2.7 OpenCV)
+# VUE
 # ═══════════════════════════════════════════════════════════════
 
 class TriKosmosView(QWidget):
@@ -331,21 +423,15 @@ class TriKosmosView(QWidget):
         super().__init__(parent)
         self.controller = controller
         self.video_selectionnee = None
-        self.thumbnail_extractor = None 
-        
-        # --- NOUVEAU : Gestion du lecteur OpenCV ---
-        self.playback_thread = None
-        self.static_pixmaps = [None] * 6 # Cache pour les miniatures statiques
-        self.current_seek_info = [] # Stocke les (start_ms, end_ms)
-        self.current_preview_label = None # Le QLabel en cours de lecture
-        # --- FIN NOUVEAU ---
+        self.preview_extractor = None 
+        self.current_seek_info = []
+        self.edit_propres = False
         
         self.init_ui()
         self.connecter_signaux()
         self.charger_videos()
     
     def init_ui(self):
-        # ... (inchangé) ...
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -368,7 +454,6 @@ class TriKosmosView(QWidget):
         self.setLayout(main_layout)
     
     def create_left_panel(self):
-        # ... (inchangé) ...
         panel = QWidget()
         panel.setStyleSheet("background-color: black;")
         layout = QVBoxLayout()
@@ -387,29 +472,13 @@ class TriKosmosView(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        
         self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: black;
-                color: white;
-                border: 2px solid white;
-                gridline-color: #555;
-                font-size: 11px;
-            }
-            QTableWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #333;
-            }
-            QTableWidget::item:selected {
-                background-color: #1DA1FF;
-            }
-            QHeaderView::section {
-                background-color: white;
-                color: black;
-                padding: 6px;
-                border: none;
-                font-weight: bold;
-                font-size: 12px;
-            }
+            QTableWidget { background-color: black; color: white; border: 2px solid white; gridline-color: #555; font-size: 11px; }
+            QTableWidget::item { padding: 4px; border-bottom: 1px solid #333; }
+            QTableWidget::item:selected { background-color: #1DA1FF; }
+            QHeaderView::section { background-color: white; color: black; padding: 6px; border: none; font-weight: bold; font-size: 12px; }
         """)
         
         layout.addWidget(self.table)
@@ -418,27 +487,11 @@ class TriKosmosView(QWidget):
         buttons_layout.setSpacing(6)
         buttons_layout.setContentsMargins(5, 5, 5, 5)
         
-        for btn_text, callback in [
-            ("Renommer", self.on_renommer),
-            ("Conserver", self.on_conserver),
-            ("Supprimer", self.on_supprimer)
-        ]:
+        for btn_text, callback in [("Renommer", self.on_renommer), ("Supprimer", self.on_supprimer)]:
             btn = QPushButton(btn_text)
             btn.setFixedHeight(32)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 11px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
             btn.clicked.connect(callback)
             buttons_layout.addWidget(btn)
         
@@ -453,7 +506,7 @@ class TriKosmosView(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
         
-        # APERÇU
+        # APERÇU DES ANGLES
         apercu_container = QFrame()
         apercu_container.setStyleSheet("background-color: black; border: 2px solid white;")
         apercu_layout = QVBoxLayout()
@@ -465,62 +518,99 @@ class TriKosmosView(QWidget):
         label_apercu.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white; color: black;")
         apercu_layout.addWidget(label_apercu)
         
+        # Le QWidget qui contient la grille 2x3
         thumbnails_widget = QWidget()
         thumbnails_layout = QGridLayout()
         thumbnails_layout.setSpacing(6)
-        thumbnails_layout.setContentsMargins(8, 8, 8, 8)
+        thumbnails_layout.setContentsMargins(8, 8, 8, 8) 
         
-        # --- MODIFIÉ : Utilisation de QLabel simple + eventFilter ---
         self.thumbnails = []
+        self.thumbnail_labels = [] 
+        
+        # Ratio 2028:1080 = ~1.87
+        thumbnail_min_width = 300 
+        thumbnail_min_height = int(thumbnail_min_width / 1.87) # ~160
+        thumbnail_max_width = 550 
+        thumbnail_max_height = int(thumbnail_max_width / 1.87) # ~294
+
+
+        idx_counter = 1
         for row in range(2):
             for col in range(3):
-                thumb = QLabel()
-                thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                thumb.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
-                thumb.setText("🔄")
-                thumb.setScaledContents(True)
-                thumb.setMinimumSize(180, 100)
+                # 1. Créer la miniature
+                thumb = AnimatedThumbnailLabel() 
+                thumb.setMinimumSize(thumbnail_min_width, thumbnail_min_height)
+                thumb.setMaximumSize(thumbnail_max_width, thumbnail_max_height)
+                thumb.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, 
+                    QSizePolicy.Policy.Expanding
+                )
+                self.thumbnails.append(thumb) 
+
+                # 2. Créer l'étiquette
+                label = QLabel(f"Angle de vue n°{idx_counter}")
+                label.setStyleSheet("color: #aaa; font-size: 10px; font-weight: bold;")
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.thumbnail_labels.append(label) 
+
+                # 3. Créer un layout vertical pour la miniature et son étiquette
+                item_layout = QVBoxLayout()
+                item_layout.setContentsMargins(0, 0, 0, 0)
+                item_layout.setSpacing(4) 
                 
-                # Installe le filtre d'événements (survol)
-                thumb.installEventFilter(self)
+                item_layout.addStretch() 
+                item_layout.addWidget(thumb, 1) 
+                item_layout.addWidget(label, 0) 
+                item_layout.addStretch() 
                 
-                thumbnails_layout.addWidget(thumb, row, col)
-                self.thumbnails.append(thumb)
-        # --- FIN MODIFICATION ---
-        
+                # 4. Créer un widget conteneur pour ce layout
+                item_widget = QWidget()
+                item_widget.setStyleSheet("background-color: transparent; border: none;")
+                item_widget.setLayout(item_layout)
+                
+                # 5. Ajouter le widget conteneur à la grille principale
+                thumbnails_layout.addWidget(item_widget, row, col, Qt.AlignmentFlag.AlignCenter)
+                
+                idx_counter += 1
+
         for i in range(2):
             thumbnails_layout.setRowStretch(i, 1)
         for i in range(3):
             thumbnails_layout.setColumnStretch(i, 1)
         
         thumbnails_widget.setLayout(thumbnails_layout)
-        apercu_layout.addWidget(thumbnails_widget)
+        
+        apercu_layout.addWidget(thumbnails_widget, 1) 
+        
         apercu_container.setLayout(apercu_layout)
         
-        layout.addWidget(apercu_container, stretch=1)
         
-        # ... (partie MÉTADONNÉES inchangée) ...
+        # MÉTADONNÉES
         meta_splitter = QSplitter(Qt.Orientation.Horizontal)
-        meta_communes_widget = self.create_metadata_section("Métadonnées communes", readonly=False, type_meta="communes")
+        
+        # Métadonnées communes (lecture seule toujours)
+        meta_communes_widget = self.create_metadata_section("Métadonnées communes", readonly=True, type_meta="communes")
         meta_splitter.addWidget(meta_communes_widget)
-        meta_propres_widget = self.create_metadata_section("Métadonnées propres", readonly=False, type_meta="propres")
+        
+        # Métadonnées propres (lecture seule par défaut, éditable avec bouton)
+        meta_propres_widget = self.create_metadata_section("Métadonnées propres", readonly=True, type_meta="propres")
         meta_splitter.addWidget(meta_propres_widget)
+        
         meta_splitter.setStretchFactor(0, 1)
         meta_splitter.setStretchFactor(1, 1)
+
+        
+        # Donner plus de place aux miniatures
+        layout.addWidget(apercu_container, stretch=2) 
         layout.addWidget(meta_splitter, stretch=1)
         
         panel.setLayout(layout)
         return panel
     
-    def create_metadata_section(self, title, readonly=False, type_meta="communes"):
-        # ... (inchangé) ...
+    def create_metadata_section(self, title, readonly=True, type_meta="communes"):
         container = QFrame()
         container.setObjectName("metadata_section")
-        container.setStyleSheet("""
-        #metadata_section {
-            background-color: black; border: 2px solid white;
-        }
-        """)
+        container.setStyleSheet("#metadata_section { background-color: black; border: 2px solid white; }")
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -538,69 +628,60 @@ class TriKosmosView(QWidget):
         
         if type_meta == "communes":
             self.meta_communes_fields = {}
-            for key in ['System', 'camera', 'Model', 'System ', 'Version']:
-                row = self.create_metadata_row(key, readonly=False)
+            for key in ['system', 'camera', 'model', 'version']:
+                # Lecture seule permanente pour les métadonnées communes
+                row = self.create_metadata_row(key, readonly=True)
                 self.meta_communes_fields[key] = row['widget']
                 content_layout.addWidget(row['container'])
             
             content_layout.addStretch()
             
-            btn_modifier_communes = QPushButton("Modifier")
-            btn_modifier_communes.setFixedSize(90, 26)
-            btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier_communes.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
-            btn_modifier_communes.clicked.connect(self.on_modifier_metadata_communes)
-            
-            btn_layout_c = QHBoxLayout()
-            btn_layout_c.addStretch()
-            btn_layout_c.addWidget(btn_modifier_communes)
-            btn_layout_c.setContentsMargins(0, 4, 0, 4)
-            content_layout.addLayout(btn_layout_c)
-            
-        else:
+        else: # Metadonnées propres
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
             
-            for key in ['Campaign', 'ZoneDict', 'Zone']:
-                row = self.create_metadata_row(key, readonly=False)
-                self.meta_propres_fields[key] = row['widget']
-                self.meta_propres_widgets[key] = row['container']
-                content_layout.addWidget(row['container'])
+            # Créer un conteneur scrollable pour toutes les métadonnées propres
+            self.meta_propres_scroll_area = QScrollArea()
+            scroll_widget = QWidget()
+            scroll_layout = QVBoxLayout()
+            scroll_layout.setContentsMargins(5, 5, 5, 5)
+            scroll_layout.setSpacing(3)
             
-            content_layout.addStretch()
+            self.meta_propres_scroll_layout = scroll_layout
             
+            scroll_widget.setLayout(scroll_layout)
+            self.meta_propres_scroll_area.setWidget(scroll_widget)
+            self.meta_propres_scroll_area.setWidgetResizable(True)
+            self.meta_propres_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.meta_propres_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.meta_propres_scroll_area.setStyleSheet("QScrollArea { border: none; background-color: black; }")
+            
+            content_layout.addWidget(self.meta_propres_scroll_area)
+            
+            
+            btn_style_sheet = "QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); } QPushButton:disabled { color: #555; border-color: #555; }"
+            
+            # Nouveau bouton "Pré-calculer"
+            btn_precalculer = QPushButton("Pré-calculer")
+            btn_precalculer.setFixedSize(90, 26)
+            btn_precalculer.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_precalculer.setStyleSheet(btn_style_sheet)
+            btn_precalculer.clicked.connect(self.on_precalculer_metadata)
+            btn_precalculer.setEnabled(False)  # Désactivé jusqu'à sélection
+            self.btn_precalculer_propres = btn_precalculer
+            
+            # Bouton "Modifier" existant
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_modifier.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white;
-                    border: 2px solid white;
-                    border-radius: 4px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.1);
-                }
-            """)
+            btn_modifier.setStyleSheet(btn_style_sheet)
             btn_modifier.clicked.connect(self.on_modifier_metadata_propres)
+            btn_modifier.setEnabled(False) 
+            self.btn_modifier_propres = btn_modifier
             
             btn_layout = QHBoxLayout()
             btn_layout.addStretch()
+            btn_layout.addWidget(btn_precalculer) # Ajout du bouton
             btn_layout.addWidget(btn_modifier)
             btn_layout.setContentsMargins(0, 4, 0, 4)
             content_layout.addLayout(btn_layout)
@@ -611,8 +692,8 @@ class TriKosmosView(QWidget):
         
         return container
     
+    # --- MODIFICATION: Augmentation de la largeur de l'étiquette ---
     def create_metadata_row(self, key, readonly=True):
-        # ... (inchangé) ...
         row_widget = QWidget()
         row_layout = QHBoxLayout()
         row_layout.setContentsMargins(3, 2, 3, 2)
@@ -620,25 +701,140 @@ class TriKosmosView(QWidget):
         
         label = QLabel(f"{key}:")
         label.setStyleSheet("color: white; font-weight: bold; font-size: 10px;")
-        label.setFixedWidth(55)
+        # Augmentation à 110 pour voir les unités
+        label.setFixedWidth(110) 
         row_layout.addWidget(label)
         
         value_widget = QLineEdit()
+        value_widget.setReadOnly(readonly)
         value_widget.setStyleSheet("color: white; padding: 3px; background-color: #1a1a1a; border: 1px solid #555; font-size: 10px;")
         
         row_layout.addWidget(value_widget)
         row_widget.setLayout(row_layout)
         
         return {'container': row_widget, 'widget': value_widget}
+    # --- FIN MODIFICATION ---
+    
+    # --- MODIFICATION: Logique d'affichage et KEY_LABELS corrigés ---
+    def remplir_metadonnees_propres(self, metadata_propres: dict):
+        """Remplit dynamiquement la section des métadonnées propres"""
+        
+        # Dictionnaire pour "traduire" les clés en étiquettes avec unités
+        # Basé EXACTEMENT sur les clés du JSON
+        KEY_LABELS = {
+            # GPS
+            'latitude': 'Latitude (°)',
+            'longitude': 'Longitude (°)',
+            'site': 'Site',
+            # Météo Air
+            'tempAir': 'Temp. Air (°C)',
+            'wind': 'Vent (km/h)',
+            'sky': 'Ciel',
+            'atmPress': 'Pression (hPa)',
+            'direction': 'Dir. Vent',
+            # Météo Mer
+            'seaState': 'État Mer',
+            'swell': 'Houle (m)',
+            # Astro
+            'coefficient': 'Coeff. Marée',
+            'moon': 'Phase Lune',
+            'tide': 'Marée',
+            # CTD
+            'depth': 'Prof. (m)',
+            'salinity': 'Salinité (PSU)',
+            'temperature': 'Temp. Eau (°C)',
+            # Heure
+            'HMSOS': 'Heure Début',
+            'hour': 'Heure (h)',
+            'minute': 'Minute (m)',
+            'second': 'Seconde (s)',
+            'ymdOS': 'Date (YMD)',
+            # Station
+            'codestation': 'Code Station',
+            'increment': 'Incrément',
+            # Analyse
+            'exploitability': 'Exploitabilité',
+            'fauna': 'Faune',
+            'habitat': 'Habitat',
+            'visibility': 'Visibilité'
+        }
+        
+        self.vider_layout(self.meta_propres_scroll_layout)
+        self.meta_propres_fields.clear()
+        self.meta_propres_widgets.clear()
+        
+        # Organiser les métadonnées par section
+        sections = {}
+        for full_key, value in metadata_propres.items():
+            # Ne pas afficher les clés de la section 'campaign'
+            if full_key.startswith('campaign_'):
+                continue
+            
+            if '_' in full_key:
+                section_name, field_name = full_key.split('_', 1)
+                
+                if section_name not in sections:
+                    sections[section_name] = {}
+                sections[section_name][field_name] = (full_key, value) # Stocker clé complète + valeur
+            else:
+                # Gérer les clés sans préfixe (au cas où)
+                if 'general' not in sections:
+                    sections['general'] = {}
+                sections['general'][full_key] = (full_key, value)
+
+        # Ordre d'affichage souhaité des sections
+        ordered_sections = ['stationDict', 'hourDict', 'gpsDict', 'meteoAirDict', 'meteoMerDict', 'astroDict', 'ctdDict', 'analyseDict', 'general']
+
+        for section_name in ordered_sections:
+            if section_name not in sections:
+                continue
+            
+            fields = sections[section_name]
+            if not fields:
+                continue
+                
+            # Titre de section
+            section_label = QLabel(f"{section_name.replace('Dict', '').upper()}")
+            section_label.setStyleSheet("color: white; font-weight: bold; font-size: 11px; padding: 5px 0px 2px 0px;")
+            self.meta_propres_scroll_layout.addWidget(section_label)
+            
+            # Champs de la section
+            # Trier les champs par leur nom pour un affichage cohérent
+            sorted_fields = sorted(fields.items(), key=lambda item: item[0])
+
+            for field_name, (full_key, value) in sorted_fields:
+                
+                # Utiliser le dictionnaire pour obtenir une étiquette propre
+                display_label = KEY_LABELS.get(field_name, field_name) # On utilise le nom du champ, pas la clé complète
+                
+                row = self.create_metadata_row(display_label, readonly=True)
+                
+                # Gérer l'affichage de 'None' ou 'N/A (API)'
+                if value in ["None", "null", "N/A (API)"]:
+                    row['widget'].setText("") # Afficher un champ vide
+                else:
+                    row['widget'].setText(str(value))
+                
+                self.meta_propres_fields[full_key] = row['widget']
+                self.meta_propres_widgets[full_key] = row['container']
+                self.meta_propres_scroll_layout.addWidget(row['container'])
+    # --- FIN MODIFICATION ---
+    
+    def vider_layout(self, layout):
+        if layout is not None:
+            while layout.count():
+                child = layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+                elif child.layout():
+                    self.vider_layout(child.layout())
     
     def connecter_signaux(self):
-        # ... (inchangé) ...
         if self.controller:
             self.table.itemSelectionChanged.connect(self.on_video_selected)
             self.controller.video_selectionnee.connect(self.afficher_video)
     
     def charger_videos(self):
-        # ... (inchangé) ...
         if not self.controller:
             return
         
@@ -650,117 +846,38 @@ class TriKosmosView(QWidget):
             self.table.setItem(row, 1, QTableWidgetItem(video.taille))
             self.table.setItem(row, 2, QTableWidgetItem(video.duree))
             self.table.setItem(row, 3, QTableWidgetItem(video.date))
+        
+        if len(videos) > 0:
+            self.table.selectRow(0)
+            self.controller.selectionner_video(videos[0].nom)
     
-    def charger_previews_statiques(self, video_path, seek_info_list):
-        if self.thumbnail_extractor and self.thumbnail_extractor.isRunning():
-            self.thumbnail_extractor.stop()
-            self.thumbnail_extractor.wait()
-            
-        # Arrête l'ancien lecteur (s'il y en a un)
-        self.stop_preview() 
+    def lancer_extraction_previews(self, video_path, seek_info):
+        if self.preview_extractor and self.preview_extractor.isRunning():
+            self.preview_extractor.stop()
+            self.preview_extractor.wait()
         
-        # Réinitialiser tous les widgets
-        for thumb_widget in self.thumbnails:
-            thumb_widget.setText("🔄")
-            thumb_widget.setPixmap(QPixmap())
-        
-        # Vider les caches
-        self.static_pixmaps = [None] * 6
-        self.current_seek_info = []
+        for thumb in self.thumbnails:
+            thumb.setText("🔄")
+            thumb.setPixmap(QPixmap())
+            thumb.set_video_preview_info(None, "00:00:00", 0)
+            thumb.static_pixmap = None
 
-        seek_times_str = [info[0] for info in seek_info_list]
+        print(f"🎬 Lancement extraction previews...")
         
-        print(f"🎬 Lancement extraction des 6 miniatures statiques pour {video_path}...")
-        
-        self.thumbnail_extractor = StaticThumbnailExtractor(video_path, seek_times_str)
-        self.thumbnail_extractor.thumbnail_ready.connect(self.afficher_miniature)
-        self.thumbnail_extractor.start()
-        
-        # Stocke les temps en ms pour l'eventFilter
-        for start_str, duration in seek_info_list:
-            start_ms = self.controller.model._parse_time_str_to_ms(start_str)
-            end_ms = start_ms + (duration * 1000)
-            self.current_seek_info.append((start_ms, end_ms))
+        self.preview_extractor = PreviewExtractorThread(video_path, seek_info)
+        self.preview_extractor.thumbnail_ready.connect(self.afficher_miniature)
+        self.preview_extractor.start()
 
     def afficher_miniature(self, index, pixmap):
         if index < len(self.thumbnails):
-            self.thumbnails[index].setPixmap(pixmap)
-            self.thumbnails[index].setText("")
-            # Stocke le pixmap statique pour le restaurer plus tard
-            self.static_pixmaps[index] = pixmap
+            if self.thumbnails[index].size().isValid():
+                self.thumbnails[index].set_static_pixmap(pixmap)
+            else:
+                self.thumbnails[index].static_pixmap = pixmap
+                self.thumbnails[index].setText("") 
             print(f"✅ Miniature statique {index+1} affichée")
-
-    # --- NOUVEAU : Gestion des survols via eventFilter ---
-    def eventFilter(self, obj, event):
-        """Gère le survol des 6 miniatures."""
-        if obj in self.thumbnails:
-            try:
-                # Trouve l'index de la miniature survolée
-                idx = self.thumbnails.index(obj)
-                start_ms, end_ms = self.current_seek_info[idx]
-            except (IndexError, ValueError):
-                # Les infos de temps ne sont pas encore chargées, ne rien faire
-                return super().eventFilter(obj, event)
-
-            if event.type() == QEvent.Type.Enter:
-                # --- Survol ---
-                self.play_preview(obj, idx, start_ms, end_ms)
-                
-            elif event.type() == QEvent.Type.Leave:
-                # --- Fin survol ---
-                self.stop_preview()
-        
-        return super().eventFilter(obj, event)
-
-    def play_preview(self, label_widget: QLabel, idx: int, start_ms: int, end_ms: int):
-        """Joue l'aperçu dans un thread OpenCV."""
-        self.stop_preview() # Arrête tout thread précédent
-        
-        # Stocke le label qu'on est en train de survoler
-        self.current_preview_label = label_widget
-        
-        print(f"   ... Lecture aperçu {idx+1} (de {start_ms}ms à {end_ms}ms)")
-        
-        self.playback_thread = OpenCVPlayerThread(
-            self.video_selectionnee.chemin,
-            start_ms,
-            end_ms,
-            speed=4.0 # Vitesse x4
-        )
-        
-        # Connecte le signal du thread directement au setPixmap du label
-        self.playback_thread.frame_ready.connect(label_widget.setPixmap)
-        # Quand le thread finit, restaure l'image statique
-        self.playback_thread.finished.connect(self.restore_static_pixmap)
-        
-        self.playback_thread.start()
-
-    def stop_preview(self):
-        """Arrête le thread d'aperçu en cours."""
-        if self.playback_thread and self.playback_thread.isRunning():
-            self.playback_thread.stop()
-            self.playback_thread.wait() # Attend qu'il meure
-        
-        self.restore_static_pixmap()
-        self.playback_thread = None
-        
-    def restore_static_pixmap(self):
-        """Restaure l'image statique sur le label qui était en cours de lecture."""
-        if self.current_preview_label:
-            try:
-                idx = self.thumbnails.index(self.current_preview_label)
-                if self.static_pixmaps[idx]:
-                    self.current_preview_label.setPixmap(self.static_pixmaps[idx])
-                else:
-                    self.current_preview_label.setText("🔄") # Fallback
-            except (ValueError, IndexError):
-                pass # Le label n'est plus pertinent
-        
-        self.current_preview_label = None
-    # --- FIN NOUVEAU ---
-
+    
     def on_video_selected(self):
-        # ... (inchangé) ...
         selected = self.table.selectedItems()
         if selected and self.controller:
             row = selected[0].row()
@@ -770,96 +887,171 @@ class TriKosmosView(QWidget):
     def afficher_video(self, video):
         """Slot : Met à jour toute la partie droite lors de la sélection"""
         self.video_selectionnee = video
+        
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
         
-        # 1. Remplir les métadonnées (CORRIGÉ)
-        self.meta_communes_fields['System'].setText(video.metadata_communes.get('system', ''))
-        self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
-        self.meta_communes_fields['Model'].setText(video.metadata_communes.get('model', ''))
-        self.meta_communes_fields.get('System ', self.meta_communes_fields.get('System')).setText(video.metadata_communes.get('system', ''))
-        self.meta_communes_fields['Version'].setText(video.metadata_communes.get('version', ''))
-        
-        # --- CORRECTION ICI ---
-        # Le code cherchait dans 'metadata_communes' au lieu de 'metadata_propres'
-        self.meta_propres_fields['Campaign'].setText(video.metadata_propres.get('campaign', ''))
-        self.meta_propres_fields['ZoneDict'].setText(video.metadata_propres.get('zone_dict', ''))
-        self.meta_propres_fields['Zone'].setText(video.metadata_propres.get('zone', ''))
-        # --- FIN CORRECTION ---
-
-        # 2. Lancer l'extraction des 6 miniatures/GIFs
         if self.controller:
-            # Récupère les infos de temps (tuple[start_str, duration])
-            seek_info_list = self.controller.get_angle_seek_times(video.nom)
+            self.controller.charger_metadonnees_depuis_json(video)
+            self.controller.charger_metadonnees_communes_depuis_json(video)
+        
+        self.meta_communes_fields['system'].setText(video.metadata_communes.get('system', ''))
+        self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
+        self.meta_communes_fields['model'].setText(video.metadata_communes.get('model', ''))
+        self.meta_communes_fields['version'].setText(video.metadata_communes.get('version', ''))
+        
+        self.remplir_metadonnees_propres(video.metadata_propres)
+        
+        if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+            self.btn_modifier_propres.setEnabled(True)
+        if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
+            self.btn_precalculer_propres.setEnabled(True)
+        
+        self.edit_propres = False
+        if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+            self.btn_modifier_propres.setText("Modifier")
+        
+        if self.controller:
+            self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
             
-            # Stocke les temps en ms pour l'eventFilter
-            self.current_seek_info = []
-            for start_str, duration in seek_info_list:
-                start_ms = self.controller.model._parse_time_str_to_ms(start_str)
-                end_ms = start_ms + (duration * 1000)
-                self.current_seek_info.append((start_ms, end_ms))
-            
-            # Lance le thread pour charger les 6 images de couverture
-            self.charger_previews_statiques(video.chemin, seek_info_list)
+            try:
+                self.lancer_extraction_previews(video.chemin, self.current_seek_info)
+                
+                for idx, thumb in enumerate(self.thumbnails):
+                    if idx < len(self.current_seek_info):
+                        seek_time_str, duration = self.current_seek_info[idx]
+                        thumb.set_video_preview_info(video.chemin, seek_time_str, duration)
+                    else:
+                        thumb.set_video_preview_info(None, "00:00:00", 0)
+                
+            except Exception as e:
+                print(f"⚠️ Aperçus vidéo non disponibles: {e}")
     
-    # ... (on_renommer, on_conserver, on_supprimer, etc. sont inchangés) ...
     def on_renommer(self):
-        print("🔄 Renommer vidéo")
-    
-    def on_conserver(self):
-        if self.video_selectionnee and self.controller:
-            self.controller.conserver_video(self.video_selectionnee.nom)
-            print(f"✅ Vidéo conservée : {self.video_selectionnee.nom}")
+        if not self.video_selectionnee:
+            QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à renommer.")
+            return
+        
+        dialogue = DialogueRenommer(self.video_selectionnee.nom, self)
+        
+        if dialogue.exec() == QDialog.DialogCode.Accepted:
+            nouveau_nom = dialogue.get_nouveau_nom()
+            
+            if not nouveau_nom:
+                QMessageBox.warning(self, "Nom vide", "Le nouveau nom ne peut pas être vide.")
+                return
+            
+            if nouveau_nom == self.video_selectionnee.nom:
+                return
+            
+            reponse = QMessageBox.question(
+                self,
+                "Confirmer le renommage",
+                f"Voulez-vous vraiment renommer :\n\n'{self.video_selectionnee.nom}'\n\nen\n\n'{nouveau_nom}' ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reponse == QMessageBox.StandardButton.Yes:
+                if self.controller.renommer_video(self.video_selectionnee.nom, nouveau_nom):
+                    QMessageBox.information(self, "Succès", f"Vidéo renommée en '{nouveau_nom}'")
+                    self.charger_videos()
+                else:
+                    QMessageBox.critical(self, "Erreur", "Impossible de renommer la vidéo.")
     
     def on_supprimer(self):
-        if self.video_selectionnee and self.controller:
-            self.controller.supprimer_video(self.video_selectionnee.nom)
-            print(f"🗑️ Vidéo marquée pour suppression : {self.video_selectionnee.nom}")
-    
-    def on_modifier_metadata_communes(self):
-        if self.video_selectionnee and self.controller:
-            nouvelles_meta = {
-                'system': self.meta_communes_fields.get('System ', self.meta_communes_fields.get('System')).text(),
-                'camera': self.meta_communes_fields['camera'].text(),
-                'model': self.meta_communes_fields['Model'].text(),
-                'version': self.meta_communes_fields['Version'].text()
-            }
-            
-            if self.controller.modifier_metadonnees_communes(self.video_selectionnee.nom, nouvelles_meta):
-                QMessageBox.information(self, "Succès", "Métadonnées communes modifiées et sauvegardées!")
-                print(f"✅ Métadonnées communes sauvegardées")
+        if not self.video_selectionnee:
+            QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à supprimer.")
+            return
+        
+        reponse = QMessageBox.question(
+            self,
+            "Confirmer la suppression",
+            f"⚠️ ATTENTION : Cette action est IRRÉVERSIBLE !\n\nLa vidéo sera DÉFINITIVEMENT supprimée de votre disque dur :\n\n'{self.video_selectionnee.nom}'\n\nVoulez-vous continuer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reponse == QMessageBox.StandardButton.Yes:
+            if self.controller.supprimer_video(self.video_selectionnee.nom):
+                QMessageBox.information(self, "Succès", f"✅ Vidéo '{self.video_selectionnee.nom}' supprimée définitivement")
+                self.video_selectionnee = None
+                self.charger_videos()
             else:
-                QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+                QMessageBox.critical(self, "Erreur", "❌ Impossible de supprimer la vidéo.")
     
     def on_modifier_metadata_propres(self):
-        if self.video_selectionnee and self.controller:
-            nouvelles_meta = {
-                'campaign': self.meta_propres_fields['Campaign'].text(),
-                'zone_dict': self.meta_propres_fields['ZoneDict'].text(),
-                'zone': self.meta_propres_fields['Zone'].text()
-            }
+        if not (self.video_selectionnee and self.controller):
+            return
+
+        if not self.edit_propres:
+            for w in self.meta_propres_fields.values():
+                w.setReadOnly(False)
+            self.edit_propres = True
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+                self.btn_modifier_propres.setText("OK")
+            # Désactiver le pré-calcul pendant l'édition
+            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
+                self.btn_precalculer_propres.setEnabled(False)
+            return
+
+        nouvelles_meta = {}
+        for key, widget in self.meta_propres_fields.items():
+            nouvelles_meta[key] = widget.text()
+        
+        ok = self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta)
+
+        if ok:
+            self.controller.show_success_dialog(self)
             
-            if self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta):
-                QMessageBox.information(self, "Succès", "Métadonnées propres modifiées et sauvegardées!")
-                print(f"✅ Métadonnées propres sauvegardées")
+            for w in self.meta_propres_fields.values():
+                w.setReadOnly(True)
+            self.edit_propres = False
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+                self.btn_modifier_propres.setText("Modifier")
+            # Réactiver le pré-calcul
+            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
+                self.btn_precalculer_propres.setEnabled(True)
+        else:
+            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+
+    def on_precalculer_metadata(self):
+        if not (self.video_selectionnee and self.controller):
+            return
+
+        # Désactiver les boutons pendant le calcul
+        self.btn_precalculer_propres.setEnabled(False)
+        self.btn_modifier_propres.setEnabled(False)
+        self.btn_precalculer_propres.setText("Calcul...")
+        QApplication.processEvents() # Forcer la mise à jour de l'UI
+
+        try:
+            success = self.controller.precalculer_metadonnees_externes(self.video_selectionnee.nom)
+            
+            if success:
+                QMessageBox.information(self, "Succès", "Les métadonnées externes ont été récupérées et sauvegardées.")
             else:
-                QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+                QMessageBox.warning(self, "Échec", "Impossible de récupérer les métadonnées externes. Vérifiez la console pour les erreurs.")
+                
+        except Exception as e:
+            print(f"Erreur lors du pré-calcul: {e}")
+            QMessageBox.critical(self, "Erreur", f"Une erreur est survenue: {e}")
+
+        # Réactiver les boutons et rafraîchir la vue
+        self.btn_precalculer_propres.setText("Pré-calculer")
+        # Re-sélectionner la vidéo va appeler 'afficher_video' et rafraîchir les champs
+        self.controller.selectionner_video(self.video_selectionnee.nom)
 
 
 # TEST
 if __name__ == '__main__':
-    from PyQt6.QtWidgets import QApplication, QMainWindow
-    from datetime import datetime
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QSizePolicy # Ajout de QSizePolicy
     
     sys.path.insert(0, str(Path(__file__).parent))
     
     try:
-        from app_model import ApplicationModel
+        from models.app_model import ApplicationModel
     except ImportError:
-        try:
-            from models.app_model import ApplicationModel
-        except ImportError:
-            print("❌ Impossible d'importer ApplicationModel")
-            sys.exit(1)
+        print("❌ Impossible d'importer ApplicationModel")
+        sys.exit(1)
     
     app = QApplication(sys.argv)
     font = QFont("Montserrat", 10)
@@ -867,8 +1059,6 @@ if __name__ == '__main__':
     
     model = ApplicationModel()
     campagne = model.creer_campagne("Test_Tri", "./test_campagne")
-    
-    # ... (le code de test reste le même) ...
     
     controller = TriKosmosController(model)
     

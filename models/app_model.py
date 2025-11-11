@@ -23,12 +23,8 @@ class Video:
         self.duree = duree
         self.date = date
         
-        # --- AJOUT ---
-        # Heure de début de la vidéo (chargée du JSON, ex: "11:46:54")
         self.start_time_str: str = "00:00:00" 
-        # --- FIN AJOUT ---
         
-        # Métadonnées communes (système) - non modifiables
         self.metadata_communes = {
             'system': '',
             'camera': '',
@@ -38,18 +34,14 @@ class Video:
         
         # Métadonnées propres (campagne) - modifiables
         self.metadata_propres = {
-            'campaign': '',
-            'zone': '',
-            'zone_dict': ''
+            # Tous les champs (gpsDict_Latitude, etc.) sont ajoutés dynamiquement
         }
         
-        # État de la vidéo
         self.est_selectionnee = False
         self.est_conservee = True
         
     def to_dict(self) -> Dict:
         """Convertit la vidéo en dictionnaire pour sauvegarde"""
-        # --- MODIFIÉ ---
         return {
             'nom': self.nom,
             'chemin': self.chemin,
@@ -60,9 +52,8 @@ class Video:
             'metadata_communes': self.metadata_communes,
             'metadata_propres': self.metadata_propres,
             'est_conservee': self.est_conservee,
-            'start_time_str': self.start_time_str  # Ajout de la sauvegarde
+            'start_time_str': self.start_time_str
         }
-        # --- FIN MODIFICATION ---
     
     @staticmethod
     def from_dict(data: Dict) -> 'Video':
@@ -78,11 +69,7 @@ class Video:
         video.metadata_communes = data.get('metadata_communes', {})
         video.metadata_propres = data.get('metadata_propres', {})
         video.est_conservee = data.get('est_conservee', True)
-        
-        # --- AJOUT ---
-        # Charge l'heure de début sauvegardée, sinon met une valeur par défaut
         video.start_time_str = data.get('start_time_str', "00:00:00")
-        # --- FIN AJOUT ---
         
         return video
 
@@ -278,9 +265,9 @@ class ApplicationModel:
                     
                     for fichier in fichiers[:10]:
                         ext = os.path.splitext(fichier)[1]
-                        print(f"       - {fichier} [{ext}]")
+                        print(f"       - {fichier} [{ext}]")
                     if len(fichiers) > 10:
-                        print(f"       ... et {len(fichiers) - 10} autres fichiers")
+                        print(f"       ... et {len(fichiers) - 10} autres fichiers")
                     
                     videos_trouvees = []
                     for fichier in fichiers:
@@ -295,7 +282,7 @@ class ApplicationModel:
                     print(f"   ✅ {len(videos_trouvees)} vidéo(s) trouvée(s)")
                     
                     for nom_video in videos_trouvees:
-                        print(f"       📹 {nom_video}")
+                        print(f"       📹 {nom_video}")
                         chemin_video = os.path.join(chemin_dossier, nom_video)
                         
                         # Créer l'objet vidéo
@@ -303,7 +290,6 @@ class ApplicationModel:
                         
                         # --- BLOC LECTURE JSON ---
                         json_path = Path(video.chemin).parent / f"{video.dossier_numero}.json"
-                        # (la valeur par défaut est déjà "00:00:00" grâce au __init__)
                         
                         if json_path.exists():
                             try:
@@ -312,26 +298,26 @@ class ApplicationModel:
                                     hmsos = meta_json.get('video', {}).get('hourDict', {}).get('HMSOS', None)
                                     if hmsos:
                                         video.start_time_str = hmsos
-                                        print(f"       ... Heure début JSON chargée : {hmsos}")
+                                        print(f"       ... Heure début JSON chargée : {hmsos}")
                                     else:
-                                        print(f"       ... Clé 'HMSOS' non trouvée dans {json_path}")
+                                        print(f"       ... Clé 'HMSOS' non trouvée dans {json_path}")
                             except Exception as e:
-                                print(f"       ... Erreur lecture JSON {json_path}: {e}")
+                                print(f"       ... Erreur lecture JSON {json_path}: {e}")
                         else:
-                             print(f"       ... Fichier JSON non trouvé : {json_path}")
+                             print(f"       ... Fichier JSON non trouvé : {json_path}")
                         # --- FIN BLOC LECTURE JSON ---
 
                         # Charger les métadonnées depuis le CSV du dossier
                         chemin_csv = os.path.join(chemin_dossier, f"{nom_dossier}.csv")
                         
                         if os.path.exists(chemin_csv):
-                            print(f"       📊 CSV trouvé : {nom_dossier}.csv")
+                            print(f"       📊 CSV trouvé : {nom_dossier}.csv")
                             if self._charger_metadata_kosmos_csv(video, chemin_csv):
                                 resultats['videos_importees'].append(video.nom)
                             else:
                                 resultats['videos_sans_metadata'].append(video.nom)
                         else:
-                            print(f"       ⚠️ Pas de CSV trouvé")
+                            print(f"       ⚠️ Pas de CSV trouvé")
                             resultats['videos_sans_metadata'].append(video.nom)
                         
                         if self.campagne_courante:
@@ -345,7 +331,7 @@ class ApplicationModel:
             print(f"📊 RÉSULTATS")
             print(f"{'='*60}")
             print(f"✅ Vidéos importées : {len(resultats['videos_importees'])}")
-            print(f"⚠️   Sans métadonnées : {len(resultats['videos_sans_metadata'])}")
+            print(f"⚠️   Sans métadonnées : {len(resultats['videos_sans_metadata'])}")
             print(f"❌ Erreurs : {len(resultats['erreurs'])}")
             print(f"{'='*60}\n")
                             
@@ -375,43 +361,57 @@ class ApplicationModel:
         
         return video
     
+    # --- MODIFICATION DE CETTE FONCTION ---
     def _charger_metadata_kosmos_csv(self, video: Video, chemin_csv: str) -> bool:
         """
-        Charge les métadonnées depuis le CSV KOSMOS
+        Charge les métadonnées DE BASE (Communes + Durée) depuis le CSV KOSMOS.
+        Toutes les autres métadonnées (GPS, CTD...) doivent provenir du JSON.
         """
         try:
             with open(chemin_csv, 'r', encoding='utf-8') as f:
-                contenu = f.read()
-                f.seek(0)
+                # Détecter le délimiteur (gère ; et ,)
+                try:
+                    dialect = csv.Sniffer().sniff(f.read(1024), delimiters=';,')
+                    f.seek(0)
+                    reader = csv.DictReader(f, dialect=dialect)
+                except csv.Error:
+                    f.seek(0)
+                    print(f"       ... Avertissement: Délimiteur CSV non détecté, utilisation de ';' par défaut.")
+                    reader = csv.DictReader(f, delimiter=';')
                 
-                reader = csv.DictReader(f)
                 
-                for row in reader:
-                    for key, value in row.items():
-                        key_lower = key.lower()
-                        
-                        if 'system' in key_lower:
-                            video.metadata_communes['system'] = value
-                        elif 'camera' in key_lower or 'cam' in key_lower:
-                            video.metadata_communes['camera'] = value
-                        elif 'model' in key_lower or 'modèle' in key_lower:
-                            video.metadata_communes['model'] = value
-                        elif 'version' in key_lower:
-                            video.metadata_communes['version'] = value
-                        
-                        elif 'campaign' in key_lower or 'campagne' in key_lower:
-                            video.metadata_propres['campaign'] = value
-                        elif 'zone' in key_lower:
-                            video.metadata_propres['zone'] = value
-                        
-                        elif 'duree' in key_lower or 'duration' in key_lower:
-                            video.duree = value
-            
+                # Lire la première ligne de données
+                row = next(reader, None)
+                if not row:
+                    print(f"       ... Avertissement: CSV {chemin_csv} est vide.")
+                    return False
+
+                # Créer un dictionnaire de clés normalisées (minuscules)
+                normalized_row = {key.lower(): value for key, value in row.items()}
+
+                # Remplir les métadonnées communes
+                video.metadata_communes['system'] = normalized_row.get('system', '')
+                video.metadata_communes['camera'] = normalized_row.get('camera', '')
+                video.metadata_communes['model'] = normalized_row.get('model', '')
+                video.metadata_communes['version'] = normalized_row.get('version', '')
+                
+                # Remplir la durée si elle existe
+                if 'duree' in normalized_row or 'duration' in normalized_row:
+                    video.duree = normalized_row.get('duree', normalized_row.get('duration', '--:--'))
+                
+                # --- MODIFICATION: Ne plus lire les données CTD/GPS/Date du CSV ---
+                # Ces données proviendront exclusivement du JSON lors de l'étape
+                # 'charger_metadonnees_depuis_json' dans le contrôleur.
+                # --- FIN MODIFICATION ---
+
+                print(f"       ... Données communes (Système, Durée) chargées depuis CSV.")
+
             return True
             
         except Exception as e:
             print(f"⚠️ Erreur lecture CSV {chemin_csv}: {e}")
             return False
+    # --- FIN MODIFICATION ---
     
     def _formater_taille(self, taille_bytes: int) -> str:
         """Formate une taille en octets"""
@@ -498,8 +498,7 @@ class ApplicationModel:
         video = self.campagne_courante.obtenir_video(nom_video)
         if video:
             for key, value in nouvelles_meta.items():
-                if key in video.metadata_propres:
-                    video.metadata_propres[key] = value
+                video.metadata_propres[key] = value
             return True
         return False
     
@@ -530,7 +529,7 @@ class ApplicationModel:
             return self.campagne_courante.videos
         return []
 
-    # --- AJOUTÉ : Méthodes pour les miniatures d'angle ---
+    # --- MÉTHODES POUR LES MINIATURES D'ANGLE (Inchangées) ---
 
     def _parse_time_to_seconds(self, time_str: str) -> int:
         """
@@ -560,33 +559,12 @@ class ApplicationModel:
         except Exception as e:
             print(f"❌ Erreur parsing temps '{time_str}': {e}")
             return 0
-        
-    def _parse_time_str_to_ms(self, time_str: str) -> int:
-        """Convertit un temps "HH:MM:SS" en millisecondes."""
-        if not time_str: return 0
-        try:
-            h, m, s = map(int, time_str.split(':'))
-            total_seconds = h * 3600 + m * 60 + s
-            return total_seconds * 1000
-        except Exception as e:
-            print(f"Erreur parsing MS: {e}")
-            return 0
 
 
     def get_angle_event_times(self, nom_video: str) -> list[tuple[str, int]]:
         """
         Calcule les temps de "seek" et les DURÉES pour les 6 
         premiers événements "START MOTEUR" trouvés...
-        
-        LOGIQUE MISE A JOUR :
-        1. Trouve le 'START ENCODER' pour définir le temps zéro.
-        2. Trouve tous les 'START MOTEUR' suivants.
-        3. Prend les 6 événements à partir du 10ÈME.
-        4. Le temps de début est 5s APRÈS l'événement.
-        5. La durée est jusqu'à l'événement MOTEUR SUIVANT.
-        
-        Retourne:
-            list[tuple[str, int]]: Une liste de (temps_de_début_str, duree_en_secondes)
         """
         if not self.campagne_courante:
             return []
@@ -595,9 +573,9 @@ class ApplicationModel:
         if not video:
             return []
 
-        # Valeurs par défaut (si la logique échoue)
+        # Valeurs par défaut
         default_seek = "00:00:01"
-        default_duration = 2 # secondes
+        default_duration = 2
         default_result = [(default_seek, default_duration)] * 6
 
         try:
@@ -610,7 +588,6 @@ class ApplicationModel:
             video_start_seconds = 0
             video_base_name = video.dossier_numero
             
-            # --- ÉTAPE 1 : Trouver le vrai début de la vidéo ---
             with open(event_csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f, delimiter=';')
                 for row in reader:
@@ -622,7 +599,7 @@ class ApplicationModel:
                             break
             
             if video_start_seconds == 0:
-                print(f"❌ Erreur: 'START ENCODER' non trouvé. Utilisation du 1er 'START MOTEUR' comme fallback.")
+                print(f"❌ Erreur: 'START ENCODER' non trouvé pour {video_base_name}. Fallback vers 1er 'START MOTEUR'.")
                 with open(event_csv_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f, delimiter=';')
                     for row in reader:
@@ -635,7 +612,6 @@ class ApplicationModel:
                  print(f"❌ Erreur: Aucun event de démarrage trouvé.")
                  return default_result
 
-            # --- ÉTAPE 2 : Trouver TOUS les 'START MOTEUR' ---
             motor_event_times = []
             with open(event_csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f, delimiter=';')
@@ -645,57 +621,43 @@ class ApplicationModel:
                         if event_seconds >= video_start_seconds:
                             motor_event_times.append(event_seconds)
             
-            # --- ÉTAPE 3 : Sélectionner (à partir du 10e) et calculer les durées ---
+            START_INDEX = 9 
+            NUM_PREVIEWS = 6
+            PREVIEW_DURATION_SEC = 30 
+            START_OFFSET_SEC = 5      
             
-            # On vérifie s'il y a au moins 10 événements
-            if len(motor_event_times) < 10:
+            if len(motor_event_times) < START_INDEX + 1:
                 print(f"   ... Moins de 10 'START MOTEUR' trouvés (seulement {len(motor_event_times)}).")
                 return default_result
                 
-            # On prend les événements à partir du 10e (index 9)
-            # On a besoin d'un événement supplémentaire pour calculer la durée du dernier
-            events_to_process = motor_event_times[9:] 
-            
             results = []
-            for i in range(len(events_to_process)):
-                if len(results) == 6: # On s'arrête dès qu'on a 6 extraits
-                    break
+            
+            events_to_process = motor_event_times[START_INDEX : START_INDEX + NUM_PREVIEWS] 
+            
+            if len(events_to_process) < NUM_PREVIEWS:
+                print(f"   ... Info: Moins de 6 événements trouvés après le 10e. Duplication du dernier.")
+                while len(events_to_process) < NUM_PREVIEWS:
+                    events_to_process.append(events_to_process[-1])
+            
+            for event_abs_time in events_to_process:
                 
-                current_event_abs_time = events_to_process[i]
+                seek_start_abs_time = event_abs_time + START_OFFSET_SEC
                 
-                # Calcul du temps de début (avec +5s de décalage)
-                seek_start_seconds = (current_event_abs_time + 5) - video_start_seconds
-                if seek_start_seconds < 0: seek_start_seconds = 0
+                seek_start_relative_sec = seek_start_abs_time - video_start_seconds
+                if seek_start_relative_sec < 0: seek_start_relative_sec = 0
                 
-                m, s = divmod(seek_start_seconds, 60)
+                m, s = divmod(seek_start_relative_sec, 60)
                 h, m = divmod(m, 60)
                 seek_start_str = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
                 
-                # Calcul de la durée
-                duration_sec = default_duration # Durée par défaut pour le tout dernier
-                
-                if i + 1 < len(events_to_process):
-                    # On a un événement suivant
-                    next_event_abs_time = events_to_process[i+1]
-                    duration_sec = next_event_abs_time - current_event_abs_time
-                    # On ne veut pas une durée de 0s, et le +5s ne doit pas dépasser
-                    if duration_sec <= 5: duration_sec = default_duration 
-                
-                results.append( (seek_start_str, duration_sec) )
+                results.append( (seek_start_str, PREVIEW_DURATION_SEC) )
 
-            # Combler si on en a trouvé moins de 6 (ex: seulement 10, 11, 12e événements)
-            if not results:
-                return default_result
-            while len(results) < 6:
-                results.append(results[-1]) # Duplique le dernier
-
-            print(f"✅ 6 angles (dès le 10e) trouvés. Infos (start_time, duration) : {results}")
+            print(f"✅ 6 angles (dès le 10e) trouvés. Infos (start_time, duration=30s) : {results}")
             return results
 
         except Exception as e:
             print(f"❌ Erreur calcul seek times: {e}")
             return default_result
-    # --- FIN DE L'AJOUT ---
 
 
 # Test du modèle
@@ -707,6 +669,53 @@ if __name__ == '__main__':
     campagne = model.creer_campagne("Test_KOSMOS", "./test_campagne")
     print(f"✅ Campagne créée : {campagne.nom}")
     
-    # resultats = model.importer_videos_kosmos("/chemin/vers/dossier_principal")
+    test_import_dir = Path("./test_import")
+    test_import_dir.mkdir(exist_ok=True)
+    dossier_0001 = test_import_dir / "0001"
+    dossier_0001.mkdir(exist_ok=True)
     
+    (dossier_0001 / "0001.mp4").touch()
+    
+    faux_json_path = dossier_0001 / "0001.json"
+    faux_json_data = {
+        "video": {
+            "hourDict": {
+                "HMSOS": "12:00:00"
+            }
+        }
+    }
+    with open(faux_json_path, 'w') as f:
+        json.dump(faux_json_data, f)
+
+    faux_csv_path = dossier_0001 / "0001.csv"
+    with open(faux_csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(['Date', 'Heure', 'Latitude', 'Longitude', 'Campaign', 'Zone', 'Duration', 'System', 'Pressure', 'Temperature', 'Salinity'])
+        writer.writerow(['2024-01-01', '12:00:00', '48.1234', '-4.5678', 'TestCamp', 'ZoneA', '00:30:00', 'KOSMOS_v3', '15.5', '14.2', '35.1'])
+        
+    print(f"📁 Faux dossier d'import créé à: {test_import_dir.resolve()}")
+
+    resultats = model.importer_videos_kosmos(str(test_import_dir.resolve()))
+    
+    if model.campagne_courante and model.campagne_courante.videos:
+        video_test = model.campagne_courante.videos[0]
+        print(f"Vérification des métadonnées chargées pour {video_test.nom}:")
+        print(f"  Lat (attendu None): {video_test.metadata_propres.get('gpsDict_latitude')}")
+        print(f"  Lon (attendu None): {video_test.metadata_propres.get('gpsDict_longitude')}")
+        print(f"  Date (attendu None): {video_test.metadata_propres.get('campaign_dateDict_date')}")
+        print(f"  Durée (attendu 00:30:00): {video_test.duree}")
+        print(f"  Pression/Prof (attendu None): {video_test.metadata_propres.get('ctdDict_depth')}")
+        print(f"  Temp Eau (attendu None): {video_test.metadata_propres.get('ctdDict_temperature')}")
+        print(f"  Salinité (attendu None): {video_test.metadata_propres.get('ctdDict_salinity')}")
+    else:
+        print("❌ Échec de l'importation test.")
+
+    import shutil
+    try:
+        shutil.rmtree(test_import_dir)
+        shutil.rmtree(Path("./test_campagne"))
+        print("🧹 Nettoyage des dossiers de test effectué.")
+    except Exception as e:
+        print(f"🧹 Erreur lors du nettoyage: {e}")
+
     print("✅ Tests terminés!")
