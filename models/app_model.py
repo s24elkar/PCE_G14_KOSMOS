@@ -561,26 +561,18 @@ class ApplicationModel:
             print(f"❌ Erreur parsing temps '{time_str}': {e}")
             return 0
 
-    # --- DANS app_model.py, REMPLACEZ get_angle_event_times PAR CECI ---
-
-    # --- DANS app_model.py, REMPLACEZ get_angle_event_times PAR CECI ---
-
-    # --- DANS app_model.py, REMPLACEZ get_angle_event_times PAR CECI ---
 
     def get_angle_event_times(self, nom_video: str) -> list[tuple[str, int]]:
         """
         Calcule les temps de "seek" et les DURÉES pour les 6 
         premiers événements "START MOTEUR" trouvés...
         
-        LOGIQUE MISE A JOUR :
-        1. Trouve le 'START ENCODER' pour définir le temps zéro.
-        2. Trouve tous les 'START MOTEUR' suivants.
+        LOGIQUE CORRIGÉE (v5 - Règle simple) :
+        1. Lit systemEvent.csv pour trouver le 'START ENCODER' (temps zéro).
+        2. Lit systemEvent.csv à nouveau pour trouver tous les 'START MOTEUR'.
         3. Prend les 6 événements à partir du 10ÈME.
         4. Le temps de début est 5s APRÈS l'événement.
-        5. La durée est jusqu'à l'événement MOTEUR SUIVANT.
-        
-        Retourne:
-            list[tuple[str, int]]: Une liste de (temps_de_début_str, duree_en_secondes)
+        5. La durée est FIXÉE à 30 secondes.
         """
         if not self.campagne_courante:
             return []
@@ -589,9 +581,9 @@ class ApplicationModel:
         if not video:
             return []
 
-        # Valeurs par défaut (si la logique échoue)
+        # Valeurs par défaut
         default_seek = "00:00:01"
-        default_duration = 2 # secondes
+        default_duration = 2
         default_result = [(default_seek, default_duration)] * 6
 
         try:
@@ -604,7 +596,9 @@ class ApplicationModel:
             video_start_seconds = 0
             video_base_name = video.dossier_numero
             
-            # --- ÉTAPE 1 : Trouver le vrai début de la vidéo ---
+            # --- ÉTAPE 1 : Trouver le vrai début de la vidéo (CORRIGÉ) ---
+            # On lit le CSV pour trouver le VRAI début (START ENCODER)
+            # et on ignore le video.start_time_str (qui vient du JSON)
             with open(event_csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f, delimiter=';')
                 for row in reader:
@@ -616,7 +610,7 @@ class ApplicationModel:
                             break
             
             if video_start_seconds == 0:
-                print(f"❌ Erreur: 'START ENCODER' non trouvé. Utilisation du 1er 'START MOTEUR' comme fallback.")
+                print(f"❌ Erreur: 'START ENCODER' non trouvé pour {video_base_name}. Fallback vers 1er 'START MOTEUR'.")
                 with open(event_csv_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f, delimiter=';')
                     for row in reader:
@@ -639,57 +633,50 @@ class ApplicationModel:
                         if event_seconds >= video_start_seconds:
                             motor_event_times.append(event_seconds)
             
-            # --- ÉTAPE 3 : Sélectionner (à partir du 10e) et calculer les durées ---
+            # --- ÉTAPE 3 : Sélectionner (à partir du 10e) et fixer la durée ---
             
-            # On vérifie s'il y a au moins 10 événements
-            if len(motor_event_times) < 10:
+            START_INDEX = 9 # (Index 9 = 10ème événement)
+            NUM_PREVIEWS = 6
+            PREVIEW_DURATION_SEC = 30 # Votre demande
+            START_OFFSET_SEC = 5      # Votre demande
+            
+            if len(motor_event_times) < START_INDEX + 1:
                 print(f"   ... Moins de 10 'START MOTEUR' trouvés (seulement {len(motor_event_times)}).")
                 return default_result
                 
-            # On prend les événements à partir du 10e (index 9)
-            # On a besoin d'un événement supplémentaire pour calculer la durée du dernier
-            events_to_process = motor_event_times[9:] 
-            
             results = []
-            for i in range(len(events_to_process)):
-                if len(results) == 6: # On s'arrête dès qu'on a 6 extraits
-                    break
+            
+            # On prend les 6 événements à partir du 10e
+            events_to_process = motor_event_times[START_INDEX : START_INDEX + NUM_PREVIEWS] 
+            
+            # S'il n'y a pas 6 événements (ex: on a le 10e, 11e mais c'est tout)
+            if len(events_to_process) < NUM_PREVIEWS:
+                print(f"   ... Info: Moins de 6 événements trouvés après le 10e. Duplication du dernier.")
+                while len(events_to_process) < NUM_PREVIEWS:
+                    events_to_process.append(events_to_process[-1])
+            
+            for event_abs_time in events_to_process:
                 
-                current_event_abs_time = events_to_process[i]
+                # Temps de début de l'extrait (avec +5s de décalage)
+                seek_start_abs_time = event_abs_time + START_OFFSET_SEC
                 
-                # Calcul du temps de début (avec +5s de décalage)
-                seek_start_seconds = (current_event_abs_time + 5) - video_start_seconds
-                if seek_start_seconds < 0: seek_start_seconds = 0
+                # Calcul final du temps de début relatif à la vidéo
+                seek_start_relative_sec = seek_start_abs_time - video_start_seconds
+                if seek_start_relative_sec < 0: seek_start_relative_sec = 0
                 
-                m, s = divmod(seek_start_seconds, 60)
+                m, s = divmod(seek_start_relative_sec, 60)
                 h, m = divmod(m, 60)
                 seek_start_str = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
                 
-                # Calcul de la durée
-                duration_sec = default_duration # Durée par défaut pour le tout dernier
-                
-                if i + 1 < len(events_to_process):
-                    # On a un événement suivant
-                    next_event_abs_time = events_to_process[i+1]
-                    duration_sec = next_event_abs_time - current_event_abs_time
-                    # On ne veut pas une durée de 0s, et le +5s ne doit pas dépasser
-                    if duration_sec <= 5: duration_sec = default_duration 
-                
-                results.append( (seek_start_str, duration_sec) )
+                # La durée est fixe
+                results.append( (seek_start_str, PREVIEW_DURATION_SEC) )
 
-            # Combler si on en a trouvé moins de 6 (ex: seulement 10, 11, 12e événements)
-            if not results:
-                return default_result
-            while len(results) < 6:
-                results.append(results[-1]) # Duplique le dernier
-
-            print(f"✅ 6 angles (dès le 10e) trouvés. Infos (start_time, duration) : {results}")
+            print(f"✅ 6 angles (dès le 10e) trouvés. Infos (start_time, duration=30s) : {results}")
             return results
 
         except Exception as e:
             print(f"❌ Erreur calcul seek times: {e}")
             return default_result
-    # --- FIN DE L'AJOUT ---
 
 
 # Test du modèle

@@ -120,7 +120,7 @@ class TriKosmosController(QObject):
                         video.metadata_propres[section_name] = str(section_data) if section_data is not None else ""
             
             print(f"✅ Métadonnées vidéo chargées depuis JSON pour {video.nom}")
-            print(f"   {len(video.metadata_propres)} champs chargés")
+            print(f"   {len(video.metadata_propres)} champs chargés")
             return True
             
         except Exception as e:
@@ -251,18 +251,11 @@ class TriKosmosController(QObject):
 
     def get_angle_seek_times(self, nom_video: str):
         """
-        Retourne une liste de 6 tuples (start_time_str, duration_sec)
-        pour l'extraction des miniatures/GIFs côté vue.
-        Par défaut : 1 point toutes les 30s, GIF de 3s.
+        MODIFIÉ : Récupère les temps de seek (start_time, duration) 
+        directement depuis le modèle (qui lit le systemEvent.csv).
         """
-        seek = []
-        for i in range(6):
-            t = i * 30
-            h = t // 3600
-            m = (t % 3600) // 60
-            s = t % 60
-            seek.append((f"{h:02d}:{m:02d}:{s:02d}", 3))
-        return seek
+        # Appelle la méthode du modèle qui contient la logique CSV
+        return self.model.get_angle_event_times(nom_video)
 
     def show_success_dialog(self, parent_view):
         """Affiche une boîte de dialogue de confirmation après modification des métadonnées"""

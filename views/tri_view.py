@@ -9,6 +9,12 @@ import json
 import subprocess
 from pathlib import Path
 
+# --- AJOUTS OPENCV ---
+import cv2
+import numpy as np
+import time
+# --- FIN AJOUTS ---
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -17,8 +23,10 @@ from PyQt6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
     QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog, QScrollArea
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread
-from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie
+# --- AJOUT QTimer et QImage ---
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer
+from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie, QImage
+# --- FIN AJOUT ---
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
@@ -26,6 +34,7 @@ from controllers.tri_controller import TriKosmosController
 
 # ═══════════════════════════════════════════════════════════════
 # DIALOGUE DE RENOMMAGE
+# (Aucun changement ici)
 # ═══════════════════════════════════════════════════════════════
 
 class DialogueRenommer(QDialog):
@@ -88,61 +97,142 @@ class DialogueRenommer(QDialog):
 
 
 # ═══════════════════════════════════════════════════════════════
-# WIDGET MINIATURE ANIMÉE
+# WIDGET MINIATURE (MODIFIÉ POUR OPENCV)
 # ═══════════════════════════════════════════════════════════════
 
 class AnimatedThumbnailLabel(QLabel):
-    """QLabel personnalisé qui gère l'affichage d'un Pixmap statique et le remplace par un QMovie animé lors du survol"""
+    """QLabel personnalisé qui gère l'affichage d'un Pixmap statique et le remplace par une lecture OpenCV lors du survol"""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.static_pixmap = None
-        self.animated_movie = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background-color: #2a2a2a; border: 1px solid #555; color: #888;")
         self.setText("🔄")
+        
+        # --- AJOUTS OPENCV ---
+        self.video_path = None
+        self.seek_time_sec = 0
+        self.duration_sec = 0
+        self.cap = None
+        self.playback_timer = QTimer(self)
+        self.playback_timer.timeout.connect(self.update_frame)
+        self.playback_start_time = 0
+        self.setScaledContents(True) # S'assurer que le pixmap est mis à l'échelle
+        # --- FIN AJOUTS ---
     
     def set_static_pixmap(self, pixmap):
         """Définit l'image statique (miniature)"""
         self.static_pixmap = pixmap
-        if self.movie() is None:
-            self.setPixmap(self.static_pixmap)
+        if not self.playback_timer.isActive():
+            self.setPixmap(self.static_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             self.setText("")
     
-    def set_animated_movie(self, movie):
-        """Stocke le GIF animé pour une utilisation future"""
-        self.animated_movie = movie
-        if self.animated_movie:
-            self.animated_movie.setCacheMode(QMovie.CacheMode.CacheAll)
-    
+    def set_video_preview_info(self, video_path: str, seek_time_str: str, duration_sec: int):
+        """Stocke les informations pour la lecture OpenCV"""
+        self.video_path = video_path
+        self.duration_sec = duration_sec
+        
+        if video_path and seek_time_str:
+            try:
+                h, m, s = map(int, seek_time_str.split(':'))
+                self.seek_time_sec = h * 3600 + m * 60 + s
+            except Exception as e:
+                print(f"Erreur parsing seek time '{seek_time_str}': {e}")
+                self.seek_time_sec = 0
+        else:
+            self.seek_time_sec = 0
+
     def enterEvent(self, event):
-        """Survol : joue le GIF"""
-        if self.animated_movie:
-            self.setMovie(self.animated_movie)
-            self.animated_movie.start()
+        """Survol : démarre la lecture OpenCV"""
+        if self.video_path and not self.playback_timer.isActive():
+            try:
+                self.cap = cv2.VideoCapture(self.video_path)
+                if not self.cap.isOpened():
+                    print(f"Erreur ouverture vidéo: {self.video_path}")
+                    self.cap = None
+                    return
+                
+                self.cap.set(cv2.CAP_PROP_POS_MSEC, self.seek_time_sec * 1000)
+                self.playback_start_time = time.time()
+                # On garde le même intervalle (33ms) mais on lira 2 frames
+                # dans update_frame pour simuler le x2
+                self.playback_timer.start(33) 
+            except Exception as e:
+                print(f"Erreur démarrage OpenCV: {e}")
+                self.cap = None
         super().enterEvent(event)
     
     def leaveEvent(self, event):
-        """Sortie survol : arrête le GIF et remet l'image statique"""
-        if self.animated_movie:
-            self.animated_movie.stop()
+        """Sortie survol : arrête la lecture OpenCV et remet l'image statique"""
+        if self.playback_timer.isActive():
+            self.playback_timer.stop()
+        
+        if self.cap:
+            self.cap.release()
+            self.cap = None
         
         if self.static_pixmap:
-            self.setPixmap(self.static_pixmap)
+            self.setPixmap(self.static_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
             self.setPixmap(QPixmap())
             self.setText("🔄")
         
         super().leaveEvent(event)
 
+    def update_frame(self):
+        """Slot pour le QTimer, lit et affiche une frame vidéo (MODIFIÉ POUR x2)"""
+        if not self.cap or not self.cap.isOpened():
+            self.leaveEvent(None) # Arrêter si la capture est perdue
+            return
+
+        elapsed = time.time() - self.playback_start_time
+        # La durée de visionnage est divisée par 2 car on lit en x2
+        # On arrête si le temps écoulé dépasse la moitié de la durée prévue
+        # Note: On garde la durée totale (self.duration_sec) pour l'affichage
+        if (elapsed * 2) > self.duration_sec:
+            self.leaveEvent(None) # Arrêter après la durée
+            return
+
+        # --- MODIFICATION LECTURE x2 ---
+        # On lit une première frame (qu'on ignore)
+        ret, _ = self.cap.read() 
+        if not ret:
+            self.leaveEvent(None) # Arrêter à la fin de la vidéo
+            return
+        
+        # On lit la deuxième frame (qu'on affiche)
+        ret, frame = self.cap.read() 
+        if not ret:
+            self.leaveEvent(None) # Arrêter à la fin de la vidéo
+            return
+        # --- FIN MODIFICATION LECTURE x2 ---
+
+        try:
+            # Convertir BGR (OpenCV) en RGB (Qt)
+            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_image.shape
+            bytes_per_line = ch * w
+            
+            # Créer QImage depuis le buffer numpy
+            q_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            
+            # Afficher le pixmap (scaled() est géré par setScaledContents(True) ou on le force)
+            self.setPixmap(pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        except Exception as e:
+            print(f"Erreur conversion frame: {e}")
+            self.leaveEvent(None) # Arrêter en cas d'erreur
+
 
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DE MINIATURES (THREAD)
+# EXTRACTION DE MINIATURES (THREAD - SIMPLIFIÉ)
+# (Aucun changement ici)
 # ═══════════════════════════════════════════════════════════════
 
 class PreviewExtractorThread(QThread):
-    """Thread pour extraire une miniature STATIQUE et un GIF ANIMÉ"""
+    """Thread pour extraire une miniature STATIQUE"""
     thumbnail_ready = pyqtSignal(int, QPixmap)
-    gif_ready = pyqtSignal(int, str)
+    # --- SUPPRESSION gif_ready ---
     
     def __init__(self, video_path, seek_info: list, parent=None):
         super().__init__(parent)
@@ -156,6 +246,7 @@ class PreviewExtractorThread(QThread):
         self._is_running = False
 
     def run(self):
+        # --- SIMPLIFICATION : Extraction JPG uniquement ---
         for idx, (seek_time, duration) in enumerate(self.seek_info):
             if not self._is_running:
                 break
@@ -167,11 +258,6 @@ class PreviewExtractorThread(QThread):
                 if pixmap and self._is_running:
                     self.thumbnail_ready.emit(idx, pixmap)
                 
-                gif_path = self.temp_dir / f"gif_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.gif"
-                movie_success = self.extract_gif(seek_time, duration, gif_path)
-                if movie_success and self._is_running:
-                    self.gif_ready.emit(idx, str(gif_path))
-
             except Exception as e:
                 print(f"⚠️ Erreur extraction preview {idx}: {e}")
 
@@ -193,31 +279,13 @@ class PreviewExtractorThread(QThread):
             print(f"Erreur extraction miniature: {e}")
         return None
 
-    def extract_gif(self, seek_time, duration: int, output_path) -> bool:
-        if output_path.exists():
-            temp_movie = QMovie(str(output_path))
-            if temp_movie.isValid():
-                return True
-        
-        video_filter = f'fps=10,scale=320:-1:flags=lanczos,setpts=0.5*PTS'
-        cmd = ['ffmpeg', '-ss', seek_time, '-t', str(duration), '-i', self.video_path, '-vf', video_filter, '-y', str(output_path)]
-        
-        try:
-            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=15, text=True, encoding='utf-8')
-            if output_path.exists():
-                return True
-        except FileNotFoundError:
-            print("❌ ffmpeg n'est pas trouvé")
-            self.stop()
-        except Exception as e:
-            print(f"Erreur extraction GIF: {e}")
-        return False
+    # --- SUPPRESSION de la méthode extract_gif ---
 
 
 # ═══════════════════════════════════════════════════════════════
 # NAVBAR
+# (Aucun changement ici)
 # ═══════════════════════════════════════════════════════════════
-
 class NavBarAvecMenu(QWidget):
     tab_changed = pyqtSignal(str)
     nouvelle_campagne_clicked = pyqtSignal()
@@ -362,6 +430,7 @@ class NavBarAvecMenu(QWidget):
 
 # ═══════════════════════════════════════════════════════════════
 # VUE
+# (Aucun changement ici)
 # ═══════════════════════════════════════════════════════════════
 
 class TriKosmosView(QWidget):
@@ -474,10 +543,10 @@ class TriKosmosView(QWidget):
         self.thumbnails = []
         for row in range(2):
             for col in range(3):
-                thumb = AnimatedThumbnailLabel() 
+                thumb = AnimatedThumbnailLabel() # Utilise la classe modifiée
                 thumb.setMinimumSize(180, 100)
                 thumb.setMaximumSize(280, 160)
-                thumb.setScaledContents(True) 
+                # thumb.setScaledContents(True) # Déplacé dans le __init__ du Label
                 thumbnails_layout.addWidget(thumb, row, col)
                 self.thumbnails.append(thumb)
         
@@ -676,7 +745,7 @@ class TriKosmosView(QWidget):
             self.controller.selectionner_video(videos[0].nom)
     
     def lancer_extraction_previews(self, video_path, seek_info):
-        """Lance l'extraction des 6 miniatures ET GIFs en arrière-plan"""
+        """Lance l'extraction des 6 miniatures STATIQUES en arrière-plan"""
         if self.preview_extractor and self.preview_extractor.isRunning():
             self.preview_extractor.stop()
             self.preview_extractor.wait()
@@ -684,15 +753,16 @@ class TriKosmosView(QWidget):
         for thumb in self.thumbnails:
             thumb.setText("🔄")
             thumb.setPixmap(QPixmap())
-            thumb.setMovie(None)
-            thumb.set_animated_movie(None)
+            # --- MODIFIÉ : Nettoyer les infos vidéo ---
+            thumb.set_video_preview_info(None, "00:00:00", 0)
             thumb.static_pixmap = None
+            # --- FIN MODIFICATION ---
 
         print(f"🎬 Lancement extraction previews...")
         
         self.preview_extractor = PreviewExtractorThread(video_path, seek_info)
         self.preview_extractor.thumbnail_ready.connect(self.afficher_miniature)
-        self.preview_extractor.gif_ready.connect(self.stocker_gif_preview)
+        # --- SUPPRESSION : Connexion gif_ready ---
         self.preview_extractor.start()
 
     def afficher_miniature(self, index, pixmap):
@@ -701,13 +771,7 @@ class TriKosmosView(QWidget):
             self.thumbnails[index].set_static_pixmap(pixmap)
             print(f"✅ Miniature statique {index+1} affichée")
     
-    def stocker_gif_preview(self, index, gif_path: str):
-        """Slot : Crée et stocke le QMovie animé à partir du chemin du GIF"""
-        if index < len(self.thumbnails):
-            movie = QMovie(gif_path)
-            if movie.isValid():
-                self.thumbnails[index].set_animated_movie(movie)
-                print(f"✅ GIF animé {index+1} stocké")
+    # --- SUPPRESSION : de la méthode stocker_gif_preview ---
     
     def on_video_selected(self):
         selected = self.table.selectedItems()
@@ -745,11 +809,26 @@ class TriKosmosView(QWidget):
         if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
             self.btn_modifier_propres.setText("Modifier")
         
-        # Lancer l'extraction des 6 miniatures/GIFs
+        # Lancer l'extraction des 6 miniatures STATIQUES
         if self.controller:
+            # Récupère les temps de seek (depuis le modèle via le contrôleur)
             self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
+            
             try:
+                # Lance l'extraction des miniatures statiques
                 self.lancer_extraction_previews(video.chemin, self.current_seek_info)
+                
+                # --- AJOUT : Configurer les infos de lecture OpenCV ---
+                for idx, thumb in enumerate(self.thumbnails):
+                    if idx < len(self.current_seek_info):
+                        seek_time_str, duration = self.current_seek_info[idx]
+                        # Transmet le chemin, le temps de début et la durée à chaque miniature
+                        thumb.set_video_preview_info(video.chemin, seek_time_str, duration)
+                    else:
+                        # Nettoyer les miniatures en excès
+                        thumb.set_video_preview_info(None, "00:00:00", 0)
+                # --- FIN AJOUT ---
+                
             except Exception as e:
                 print(f"⚠️ Aperçus vidéo non disponibles: {e}")
     
@@ -842,6 +921,7 @@ class TriKosmosView(QWidget):
 
 
 # TEST
+# (Aucun changement ici)
 if __name__ == '__main__':
     from PyQt6.QtWidgets import QApplication, QMainWindow
     
