@@ -120,7 +120,7 @@ class TriKosmosController(QObject):
                         video.metadata_propres[section_name] = str(section_data) if section_data is not None else ""
             
             print(f"✅ Métadonnées vidéo chargées depuis JSON pour {video.nom}")
-            print(f"   {len(video.metadata_propres)} champs chargés")
+            print(f"   {len(video.metadata_propres)} champs chargés")
             return True
             
         except Exception as e:
@@ -326,6 +326,59 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur modification métadonnées communes: {e}")
             return False
     
+    def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict) -> bool:
+        """Modifie les métadonnées communes (section system du JSON)"""
+        try:
+            video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
+            if not video:
+                return False
+            
+            # Mettre à jour les métadonnées communes dans l'objet vidéo
+            for key, value in metadonnees.items():
+                video.metadata_communes[key] = value
+            
+            # Sauvegarder dans le JSON
+            dossier = Path(video.chemin).parent
+            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
+            json_path = dossier / f"{dossier_numero}.json"
+            
+            if not json_path.exists():
+                print(f"❌ Fichier JSON non trouvé: {json_path}")
+                return False
+            
+            # Charger le JSON
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Mettre à jour la section system
+            if 'system' not in data:
+                data['system'] = {}
+            
+            data['system']['system'] = metadonnees.get('system', '')
+            data['system']['camera'] = metadonnees.get('camera', '')
+            data['system']['model'] = metadonnees.get('model', '')
+            data['system']['version'] = metadonnees.get('version', '')
+            
+            # Sauvegarde atomique
+            from tempfile import NamedTemporaryFile
+            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
+            try:
+                with tmp as tf:
+                    json.dump(data, tf, indent=4, ensure_ascii=False)
+                Path(tmp.name).replace(json_path)
+            finally:
+                try:
+                    Path(tmp.name).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            
+            print(f"✅ Métadonnées communes sauvegardées dans: {json_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde métadonnées communes: {e}")
+            return False
+    
     def get_video_by_name(self, nom_video: str):
         """Retourne l'objet vidéo via le modèle courant."""
         if not self.model.campagne_courante:
@@ -334,11 +387,18 @@ class TriKosmosController(QObject):
 
     def get_angle_seek_times(self, nom_video: str):
         """
-        MODIFIÉ : Récupère les temps de seek (start_time, duration) 
-        directement depuis le modèle (qui lit le systemEvent.csv).
+        Retourne une liste de 6 tuples (start_time_str, duration_sec)
+        pour l'extraction des miniatures/GIFs côté vue.
+        Par défaut : 1 point toutes les 30s, GIF de 3s.
         """
-        # Appelle la méthode du modèle qui contient la logique CSV
-        return self.model.get_angle_event_times(nom_video)
+        seek = []
+        for i in range(6):
+            t = i * 30
+            h = t // 3600
+            m = (t % 3600) // 60
+            s = t % 60
+            seek.append((f"{h:02d}:{m:02d}:{s:02d}", 3))
+        return seek
 
     def show_success_dialog(self, parent_view):
         """Affiche une boîte de dialogue de confirmation après modification des métadonnées"""
