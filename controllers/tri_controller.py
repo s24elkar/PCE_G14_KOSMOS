@@ -232,6 +232,53 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur sauvegarde JSON: {e}")
             return False
 
+    def sauvegarder_metadonnees_communes_vers_json(self, video, nom_utilisateur: str = "User") -> bool:
+        """Sauvegarde les métadonnées communes dans la section system du fichier JSON"""
+        try:
+            dossier = Path(video.chemin).parent
+            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
+            json_path = dossier / f"{dossier_numero}.json"
+            
+            if not json_path.exists():
+                print(f"❌ Fichier JSON non trouvé pour sauvegarde: {json_path}")
+                return False
+            
+            # Charger les données existantes
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Créer la section system si elle n'existe pas
+            if 'system' not in data:
+                data['system'] = {}
+            
+            # Mettre à jour la section system avec les métadonnées communes
+            for key, value in video.metadata_communes.items():
+                # Convertir les valeurs vides en string vide pour les métadonnées communes
+                if value == "None" or value is None:
+                    data['system'][key] = ""
+                else:
+                    data['system'][key] = str(value)
+            
+            # Sauvegarde atomique
+            from tempfile import NamedTemporaryFile
+            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
+            try:
+                with tmp as tf:
+                    json.dump(data, tf, indent=4, ensure_ascii=False)
+                Path(tmp.name).replace(json_path)
+            finally:
+                try:
+                    Path(tmp.name).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            
+            print(f"✅ Métadonnées communes sauvegardées dans: {json_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde métadonnées communes JSON: {e}")
+            return False
+
     def modifier_metadonnees_propres(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """Modifie uniquement les métadonnées propres à la vidéo (section video du JSON)"""
         video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
@@ -242,6 +289,42 @@ class TriKosmosController(QObject):
             
             return self.sauvegarder_metadonnees_vers_json(video, nom_utilisateur)
         return False
+
+    def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
+        """Modifie les métadonnées communes pour TOUTES les vidéos de la campagne"""
+        if not self.model.campagne_courante:
+            return False
+            
+        try:
+            # Obtenir toutes les vidéos de la campagne
+            toutes_videos = self.model.obtenir_videos()
+            if not toutes_videos:
+                print("❌ Aucune vidéo trouvée dans la campagne")
+                return False
+            
+            # Mettre à jour les métadonnées communes pour chaque vidéo
+            videos_mises_a_jour = []
+            for video in toutes_videos:
+                # Mettre à jour les métadonnées communes en mémoire
+                for key, value in metadonnees.items():
+                    video.metadata_communes[key] = value
+                videos_mises_a_jour.append(video)
+            
+            # Sauvegarder dans tous les fichiers JSON correspondants
+            succes = True
+            for video in videos_mises_a_jour:
+                if not self.sauvegarder_metadonnees_communes_vers_json(video, nom_utilisateur):
+                    succes = False
+                    print(f"❌ Erreur lors de la sauvegarde pour {video.nom}")
+            
+            if succes:
+                print(f"✅ Métadonnées communes mises à jour pour {len(videos_mises_a_jour)} vidéo(s)")
+            
+            return succes
+            
+        except Exception as e:
+            print(f"❌ Erreur modification métadonnées communes: {e}")
+            return False
     
     def get_video_by_name(self, nom_video: str):
         """Retourne l'objet vidéo via le modèle courant."""

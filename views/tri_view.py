@@ -431,6 +431,7 @@ class TriKosmosView(QWidget):
         self.preview_extractor = None 
         self.current_seek_info = []
         self.edit_propres = False
+        self.edit_communes = False
         
         self.init_ui()
         self.connecter_signaux()
@@ -595,7 +596,7 @@ class TriKosmosView(QWidget):
         # MÉTADONNÉES
         meta_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Métadonnées communes (lecture seule toujours)
+        # Métadonnées communes (éditable avec bouton)
         meta_communes_widget = self.create_metadata_section("Métadonnées communes", readonly=True, type_meta="communes")
         meta_splitter.addWidget(meta_communes_widget)
         
@@ -641,6 +642,21 @@ class TriKosmosView(QWidget):
                 content_layout.addWidget(row['container'])
             
             content_layout.addStretch()
+            
+            # Bouton "Modifier" pour les métadonnées communes
+            btn_modifier_communes = QPushButton("Modifier")
+            btn_modifier_communes.setFixedSize(90, 26)
+            btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_modifier_communes.setStyleSheet("QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }")
+            btn_modifier_communes.clicked.connect(self.on_modifier_metadata_communes)
+            btn_modifier_communes.setEnabled(False)
+            self.btn_modifier_communes = btn_modifier_communes
+            
+            btn_communes_layout = QHBoxLayout()
+            btn_communes_layout.addStretch()
+            btn_communes_layout.addWidget(btn_modifier_communes)
+            btn_communes_layout.setContentsMargins(0, 4, 0, 4)
+            content_layout.addLayout(btn_communes_layout)
             
         else: # Metadonnées propres
             self.meta_propres_fields = {}
@@ -819,8 +835,11 @@ class TriKosmosView(QWidget):
         
         if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
             self.btn_modifier_propres.setEnabled(True)
+        if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+            self.btn_modifier_communes.setEnabled(True)
         
         self.edit_propres = False
+        self.edit_communes = False
         if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
             self.btn_modifier_propres.setText("Modifier")
         
@@ -911,7 +930,13 @@ class TriKosmosView(QWidget):
         ok = self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta)
 
         if ok:
-            self.controller.show_success_dialog(self)
+            # Afficher un message spécifique pour les métadonnées propres
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "Succès", 
+                "Métadonnées propres mises à jour avec succès !"
+            )
             
             for w in self.meta_propres_fields.values():
                 w.setReadOnly(True)
@@ -919,7 +944,84 @@ class TriKosmosView(QWidget):
             if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
                 self.btn_modifier_propres.setText("Modifier")
         else:
-            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées propres")
+
+    def on_modifier_metadata_communes(self):
+        """Bouton "Modifier" pour métadonnées communes - bascule entre édition et sauvegarde"""
+        if not (self.video_selectionnee and self.controller):
+            return
+
+        # Si pas encore en édition → activer l'édition
+        if not self.edit_communes:
+            for w in self.meta_communes_fields.values():
+                w.setReadOnly(False)
+            self.edit_communes = True
+            if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+                self.btn_modifier_communes.setText("OK")
+            return
+
+        # Déjà en édition → sauvegarder toutes les métadonnées communes
+        if not self.video_selectionnee:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Aucune vidéo sélectionnée", "Veuillez sélectionner une vidéo avant de valider.")
+            return
+
+        # Collecter les métadonnées des champs
+        nouvelles_meta = {}
+        for key, widget in self.meta_communes_fields.items():
+            nouvelles_meta[key] = widget.text()
+        
+        ok = self.controller.modifier_metadonnees_communes(self.video_selectionnee.nom, nouvelles_meta)
+
+        if ok:
+            # Afficher un message spécifique pour les métadonnées communes
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "Succès", 
+                "Métadonnées communes mises à jour avec succès !"
+            )
+            
+            # Recharger les métadonnées communes pour toutes les vidéos
+            self.recharger_metadonnees_communes_toutes_videos()
+            
+            # Repasser en lecture seule
+            for w in self.meta_communes_fields.values():
+                w.setReadOnly(True)
+            self.edit_communes = False
+            if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+                self.btn_modifier_communes.setText("Modifier")
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées communes dans le fichier JSON")
+
+    def recharger_metadonnees_communes_toutes_videos(self):
+        """Recharge les métadonnées communes pour toutes les vidéos depuis les fichiers JSON"""
+        if not self.controller:
+            return
+            
+        try:
+            # Obtenir toutes les vidéos
+            toutes_videos = self.controller.obtenir_videos()
+            if not toutes_videos:
+                return
+            
+            # Recharger les métadonnées communes pour chaque vidéo
+            for video in toutes_videos:
+                self.controller.charger_metadonnees_communes_depuis_json(video)
+            
+            # Mettre à jour l'affichage si une vidéo est actuellement sélectionnée
+            if self.video_selectionnee:
+                self.meta_communes_fields['system'].setText(self.video_selectionnee.metadata_communes.get('system', ''))
+                self.meta_communes_fields['camera'].setText(self.video_selectionnee.metadata_communes.get('camera', ''))
+                self.meta_communes_fields['model'].setText(self.video_selectionnee.metadata_communes.get('model', ''))
+                self.meta_communes_fields['version'].setText(self.video_selectionnee.metadata_communes.get('version', ''))
+                
+            print("✅ Métadonnées communes rechargées pour toutes les vidéos")
+            
+        except Exception as e:
+            print(f"❌ Erreur rechargement métadonnées communes: {e}")
 
 
 # TEST
