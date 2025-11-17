@@ -7,9 +7,18 @@ import sys
 import csv
 import json
 import os
+import re  
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from datetime import datetime
+
+# --- AJOUT NÉCESSAIRE ---
+try:
+    import requests
+except ImportError:
+    print("ERREUR: La bibliothèque 'requests' est manquante. Veuillez l'installer avec : pip install requests")
+    sys.exit(1)
+# --- FIN AJOUT ---
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -55,7 +64,6 @@ class TriKosmosController(QObject):
     def supprimer_video(self, nom_video: str) -> bool:
         """Supprime définitivement une vidéo (fichier + liste)"""
         try:
-            # Récupérer la vidéo
             video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
             
             if not video:
@@ -64,7 +72,6 @@ class TriKosmosController(QObject):
             
             chemin_fichier = Path(video.chemin)
             
-            # 1. Supprimer le fichier physique
             if chemin_fichier.exists():
                 try:
                     os.remove(chemin_fichier)
@@ -75,11 +82,9 @@ class TriKosmosController(QObject):
             else:
                 print(f"⚠️ Fichier déjà supprimé ou introuvable: {chemin_fichier}")
             
-            # 2. Supprimer de la liste de la campagne
             self.model.campagne_courante.supprimer_video(nom_video)
             print(f"✅ Vidéo retirée de la campagne: {nom_video}")
             
-            # 3. Désélectionner si c'était la vidéo sélectionnée
             if self.model.video_selectionnee and self.model.video_selectionnee.nom == nom_video:
                 self.model.video_selectionnee = None
             
@@ -90,7 +95,7 @@ class TriKosmosController(QObject):
             return False
     
     def charger_metadonnees_depuis_json(self, video) -> bool:
-        """Charge uniquement les métadonnées propres à la vidéo depuis le fichier JSON existant"""
+        """Charge les métadonnées propres (sections 'video' et 'campaign') depuis le JSON."""
         try:
             dossier = Path(video.chemin).parent
             dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
@@ -103,30 +108,30 @@ class TriKosmosController(QObject):
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Charger UNIQUEMENT la section "video" (métadonnées propres)
             video.metadata_propres.clear()
             
-            if 'video' in data:
-                video_section = data['video']
-                
-                # Parcourir toutes les sections de métadonnées vidéo
-                for section_name, section_data in video_section.items():
-                    if isinstance(section_data, dict):
-                        for key, value in section_data.items():
-                            # Préfixer avec le nom de la section pour éviter les conflits
-                            full_key = f"{section_name}_{key}"
-                            video.metadata_propres[full_key] = str(value) if value is not None else ""
+            def flatten_dict(section_data, prefix=''):
+                for key, value in section_data.items():
+                    if isinstance(value, dict):
+                        flatten_dict(value, prefix=f"{prefix}{key}_")
                     else:
-                        video.metadata_propres[section_name] = str(section_data) if section_data is not None else ""
+                        full_key = f"{prefix}{key}"
+                        video.metadata_propres[full_key] = str(value) if value is not None else ""
+
+            if 'video' in data:
+                flatten_dict(data['video'])
+
+            if 'campaign' in data:
+                flatten_dict(data['campaign'], prefix="campaign_")
             
-            print(f"✅ Métadonnées vidéo chargées depuis JSON pour {video.nom}")
+            print(f"✅ Métadonnées (vidéo + campagne) chargées depuis JSON pour {video.nom}")
             print(f"   {len(video.metadata_propres)} champs chargés")
             return True
             
         except Exception as e:
             print(f"❌ Erreur lecture JSON: {e}")
             return False
-    
+
     def charger_metadonnees_communes_depuis_json(self, video) -> bool:
         """Charge les métadonnées communes depuis le fichier JSON (lecture seule)"""
         try:
@@ -141,7 +146,6 @@ class TriKosmosController(QObject):
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Charger les métadonnées communes depuis les sections system et campaign
             video.metadata_communes.clear()
             
             if 'system' in data:
@@ -169,50 +173,40 @@ class TriKosmosController(QObject):
                 print(f"❌ Fichier JSON non trouvé pour sauvegarde: {json_path}")
                 return False
             
-            # Charger les données existantes (préserver system et campaign)
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Créer la section video si elle n'existe pas
             if 'video' not in data:
                 data['video'] = {}
             
-            # Réorganiser les métadonnées propres par section dans la section video
             video_section = data['video']
             
-            # Initialiser les sections si elles n'existent pas
             sections = ['analyseDict', 'astroDict', 'ctdDict', 'gpsDict', 'hourDict', 'meteoAirDict', 'meteoMerDict', 'stationDict']
             for section in sections:
                 if section not in video_section:
                     video_section[section] = {}
             
-            # Distribuer les métadonnées dans les bonnes sections
             for key, value in video.metadata_propres.items():
                 if '_' in key:
+                    if key.startswith('campaign_'):
+                        continue
+                        
                     section_name, field_name = key.split('_', 1)
                     if section_name in video_section:
-                        # Convertir les valeurs vides en null pour respecter le format JSON
                         if value == "" or value == "None":
                             video_section[section_name][field_name] = None
                         else:
-                            # Tenter de convertir les valeurs numériques
                             try:
-                                if '.' in value:
-                                    video_section[section_name][field_name] = float(value)
-                                elif value.isdigit():
-                                    video_section[section_name][field_name] = int(value)
+                                val_test = float(value)
+                                if val_test.is_integer():
+                                    video_section[section_name][field_name] = int(val_test)
                                 else:
-                                    video_section[section_name][field_name] = value
-                            except:
+                                    video_section[section_name][field_name] = val_test
+                            except ValueError:
                                 video_section[section_name][field_name] = value
-                else:
-                    # Si pas de préfixe, mettre dans analyseDict par défaut
-                    if value == "" or value == "None":
-                        video_section['analyseDict'][key] = None
-                    else:
-                        video_section['analyseDict'][key] = value
+                            except Exception:
+                                video_section[section_name][field_name] = value
             
-            # Sauvegarde atomique (préserve le fichier original si erreur)
             from tempfile import NamedTemporaryFile
             tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
             try:
@@ -232,58 +226,10 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur sauvegarde JSON: {e}")
             return False
 
-    def sauvegarder_metadonnees_communes_vers_json(self, video, nom_utilisateur: str = "User") -> bool:
-        """Sauvegarde les métadonnées communes dans la section system du fichier JSON"""
-        try:
-            dossier = Path(video.chemin).parent
-            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
-            json_path = dossier / f"{dossier_numero}.json"
-            
-            if not json_path.exists():
-                print(f"❌ Fichier JSON non trouvé pour sauvegarde: {json_path}")
-                return False
-            
-            # Charger les données existantes
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Créer la section system si elle n'existe pas
-            if 'system' not in data:
-                data['system'] = {}
-            
-            # Mettre à jour la section system avec les métadonnées communes
-            for key, value in video.metadata_communes.items():
-                # Convertir les valeurs vides en string vide pour les métadonnées communes
-                if value == "None" or value is None:
-                    data['system'][key] = ""
-                else:
-                    data['system'][key] = str(value)
-            
-            # Sauvegarde atomique
-            from tempfile import NamedTemporaryFile
-            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
-            try:
-                with tmp as tf:
-                    json.dump(data, tf, indent=4, ensure_ascii=False)
-                Path(tmp.name).replace(json_path)
-            finally:
-                try:
-                    Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
-            
-            print(f"✅ Métadonnées communes sauvegardées dans: {json_path}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur sauvegarde métadonnées communes JSON: {e}")
-            return False
-
     def modifier_metadonnees_propres(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """Modifie uniquement les métadonnées propres à la vidéo (section video du JSON)"""
         video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
         if video:
-            # Mettre à jour les métadonnées propres
             for key, value in metadonnees.items():
                 video.metadata_propres[key] = value
             
@@ -296,21 +242,17 @@ class TriKosmosController(QObject):
             return False
             
         try:
-            # Obtenir toutes les vidéos de la campagne
             toutes_videos = self.model.obtenir_videos()
             if not toutes_videos:
                 print("❌ Aucune vidéo trouvée dans la campagne")
                 return False
             
-            # Mettre à jour les métadonnées communes pour chaque vidéo
             videos_mises_a_jour = []
             for video in toutes_videos:
-                # Mettre à jour les métadonnées communes en mémoire
                 for key, value in metadonnees.items():
                     video.metadata_communes[key] = value
                 videos_mises_a_jour.append(video)
             
-            # Sauvegarder dans tous les fichiers JSON correspondants
             succes = True
             for video in videos_mises_a_jour:
                 if not self.sauvegarder_metadonnees_communes_vers_json(video, nom_utilisateur):
@@ -326,59 +268,6 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur modification métadonnées communes: {e}")
             return False
     
-    def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict) -> bool:
-        """Modifie les métadonnées communes (section system du JSON)"""
-        try:
-            video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
-            if not video:
-                return False
-            
-            # Mettre à jour les métadonnées communes dans l'objet vidéo
-            for key, value in metadonnees.items():
-                video.metadata_communes[key] = value
-            
-            # Sauvegarder dans le JSON
-            dossier = Path(video.chemin).parent
-            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
-            json_path = dossier / f"{dossier_numero}.json"
-            
-            if not json_path.exists():
-                print(f"❌ Fichier JSON non trouvé: {json_path}")
-                return False
-            
-            # Charger le JSON
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Mettre à jour la section system
-            if 'system' not in data:
-                data['system'] = {}
-            
-            data['system']['system'] = metadonnees.get('system', '')
-            data['system']['camera'] = metadonnees.get('camera', '')
-            data['system']['model'] = metadonnees.get('model', '')
-            data['system']['version'] = metadonnees.get('version', '')
-            
-            # Sauvegarde atomique
-            from tempfile import NamedTemporaryFile
-            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
-            try:
-                with tmp as tf:
-                    json.dump(data, tf, indent=4, ensure_ascii=False)
-                Path(tmp.name).replace(json_path)
-            finally:
-                try:
-                    Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
-            
-            print(f"✅ Métadonnées communes sauvegardées dans: {json_path}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur sauvegarde métadonnées communes: {e}")
-            return False
-    
     def get_video_by_name(self, nom_video: str):
         """Retourne l'objet vidéo via le modèle courant."""
         if not self.model.campagne_courante:
@@ -387,19 +276,174 @@ class TriKosmosController(QObject):
 
     def get_angle_seek_times(self, nom_video: str):
         """
-        Retourne une liste de 6 tuples (start_time_str, duration_sec)
-        pour l'extraction des miniatures/GIFs côté vue.
-        Par défaut : 1 point toutes les 30s, GIF de 3s.
+        Récupère les temps de seek (start_time, duration) 
+        directement depuis le modèle (qui lit le systemEvent.csv).
         """
-        seek = []
-        for i in range(6):
-            t = i * 30
-            h = t // 3600
-            m = (t % 3600) // 60
-            s = t % 60
-            seek.append((f"{h:02d}:{m:02d}:{s:02d}", 3))
-        return seek
+        return self.model.get_angle_event_times(nom_video)
 
+    def precalculer_metadonnees_externes(self, nom_video: str) -> bool:
+        """
+        Tente de récupérer les métadonnées (météo + astro) depuis Internet
+        en utilisant Open-Meteo (météo) et wttr.in (astro).
+        """
+        print(f"🔄 Lancement du pré-calcul pour {nom_video}...")
+        if not self.model.campagne_courante:
+            return False
+            
+        video = self.model.campagne_courante.obtenir_video(nom_video)
+        if not video:
+            print(f"❌ Vidéo non trouvée pour pré-calcul: {nom_video}")
+            return False
+
+        try:
+            lat_str = video.metadata_propres.get('gpsDict_latitude', 'N/A')
+            lon_str = video.metadata_propres.get('gpsDict_longitude', 'N/A')
+            date_str = video.metadata_propres.get('campaign_dateDict_date', 'N/A') 
+            heure_str = video.metadata_propres.get('hourDict_HMSOS', 'N/A')
+
+            if date_str in ['N/A', '', 'None'] or heure_str in ['N/A', '', 'None']:
+                print(f"❌ Données temporelles manquantes. Date: {date_str}, Heure: {heure_str}")
+                return False
+                
+            try:
+                lat = float(lat_str)
+                lon = float(lon_str)
+                if lat == 0 or lon == 0:
+                    print(f"❌ Données GPS invalides (0, 0) ou manquantes. Entrez-les manuellement.")
+                    print(f"   Lat: {lat_str}, Lon: {lon_str}")
+                    return False
+            except (ValueError, TypeError):
+                print(f"❌ Données GPS invalides (non numériques). Lat: {lat_str}, Lon: {lon_str}")
+                return False
+            
+            try:
+                heure_index = int(heure_str.split(':')[0])
+            except:
+                print(f"❌ Format d'heure invalide: {heure_str}. Doit être HH:MM:SS")
+                return False
+
+        except Exception as e:
+            print(f"❌ Erreur lors de l'extraction des métadonnées locales: {e}")
+            return False
+
+        data_meteo_trouvee = False
+        data_astro_trouvee = False
+
+        # APPEL 1: Open-Meteo pour la MÉTÉO (Air ET Mer)
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            is_future = date_obj > datetime.now().date()
+            
+            if is_future:
+                API_URL = "https://api.open-meteo.com/v1/forecast"
+                params = {
+                    "latitude": lat, "longitude": lon,
+                    "start_date": date_str, "end_date": date_str,
+                    "hourly": "temperature_2m,windspeed_10m,wave_height,swell_wave_height",
+                    "timezone": "auto"
+                }
+                print(f"   Appel API Prévision Météo/Marine: {API_URL}")
+            else:
+                API_URL = "https://marine-api.open-meteo.com/v1/marine"
+                params = {
+                    "latitude": lat, "longitude": lon,
+                    "start_date": date_str, "end_date": date_str,
+                    "hourly": "wave_height,swell_wave_height",
+                    "timezone": "auto"
+                }
+                print(f"   Appel API Marine (Historique): {API_URL}")
+
+            response_meteo = requests.get(API_URL, params=params, timeout=10)
+            response_meteo.raise_for_status() 
+            data_meteo = response_meteo.json()
+            
+            hourly_data = data_meteo.get('hourly', {})
+
+            if is_future and 'temperature_2m' in hourly_data and hourly_data['temperature_2m'][heure_index] is not None:
+                temp_air = hourly_data['temperature_2m'][heure_index]
+                wind_speed_kmh = hourly_data['windspeed_10m'][heure_index]
+                
+                video.metadata_propres['meteoAirDict_tempAir'] = str(temp_air)
+                video.metadata_propres['meteoAirDict_wind'] = str(round(wind_speed_kmh, 1))
+                data_meteo_trouvee = True
+                print(f"   ✅ Données Météo Air (Prévision) trouvées: Temp: {temp_air}°C, Vent: {wind_speed_kmh} km/h")
+            elif not is_future:
+                print("   ℹ️ Date historique, appel séparé pour la météo terrestre...")
+                API_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+                params_archive = {
+                    "latitude": lat, "longitude": lon,
+                    "start_date": date_str, "end_date": date_str,
+                    "hourly": "temperature_2m,windspeed_10m",
+                    "timezone": "auto"
+                }
+                response_archive = requests.get(API_ARCHIVE_URL, params=params_archive, timeout=10)
+                response_archive.raise_for_status()
+                data_archive = response_archive.json()
+                
+                if 'hourly' in data_archive and data_archive['hourly']['temperature_2m'][heure_index] is not None:
+                    temp_air = data_archive['hourly']['temperature_2m'][heure_index]
+                    wind_speed_kmh = data_archive['hourly']['windspeed_10m'][heure_index]
+                    
+                    video.metadata_propres['meteoAirDict_tempAir'] = str(temp_air)
+                    video.metadata_propres['meteoAirDict_wind'] = str(round(wind_speed_kmh, 1))
+                    data_meteo_trouvee = True
+                    print(f"   ✅ Données Météo Air (Archive) trouvées: Temp: {temp_air}°C, Vent: {wind_speed_kmh} km/h")
+            else:
+                print(f"   ⚠️ Données météo air non trouvées pour l'heure {heure_index}")
+
+            if 'wave_height' in hourly_data and hourly_data['wave_height'][heure_index] is not None:
+                wave_height = hourly_data['wave_height'][heure_index]
+                swell_height = hourly_data['swell_wave_height'][heure_index]
+
+                video.metadata_propres['meteoMerDict_seaState'] = str(round(wave_height, 1))
+                video.metadata_propres['meteoMerDict_swell'] = str(round(swell_height, 1))
+                data_meteo_trouvee = True
+                print(f"   ✅ Données Météo Mer trouvées: État Mer (H. Vagues): {wave_height}m, Houle: {swell_height}m")
+            else:
+                print(f"   ⚠️ Données météo mer (houle/vagues) non trouvées.")
+
+        except Exception as e:
+            print(f"❌ Erreur lors de l'appel à l'API Open-Meteo: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"   Réponse: {e.response.text}")
+            else:
+                print("   L'erreur n'a pas de corps de réponse (timeout ou erreur réseau).")
+
+        # APPEL 2: wttr.in pour l'ASTRO (Phase de lune)
+        try:
+            WTTR_URL = f"https://wttr.in/{lat},{lon}?format=j1&date={date_str}&lang=fr"
+            print(f"   Appel API Astro: {WTTR_URL}")
+            response_astro = requests.get(WTTR_URL, timeout=20) 
+            response_astro.raise_for_status()
+            data_astro = response_astro.json()
+            
+            moon_phase = data_astro.get('weather', [{}])[0].get('astronomy', [{}])[0].get('moon_phase')
+            
+            if moon_phase:
+                video.metadata_propres['astroDict_moon'] = moon_phase
+                data_astro_trouvee = True
+                print(f"   ✅ Données Astro trouvées: Phase de lune: {moon_phase}")
+            else:
+                print("   ⚠️ Données de phase de lune non trouvées dans la réponse de wttr.in")
+
+        except Exception as e:
+            print(f"❌ Erreur lors de l'appel à l'API wttr.in: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"   Réponse: {e.response.text}")
+            else:
+                print("   L'erreur n'a pas de corps de réponse (timeout ou erreur réseau).")
+
+        if data_meteo_trouvee or data_astro_trouvee:
+            if 'astroDict_coefficient' not in video.metadata_propres or video.metadata_propres['astroDict_coefficient'] in [None, ""]:
+                video.metadata_propres['astroDict_coefficient'] = None
+            if 'astroDict_tide' not in video.metadata_propres or video.metadata_propres['astroDict_tide'] in [None, ""]:
+                video.metadata_propres['astroDict_tide'] = None
+            
+            return self.sauvegarder_metadonnees_vers_json(video)
+        else:
+            print("❌ Aucune donnée externe n'a pu être récupérée.")
+            return False
+    
     def show_success_dialog(self, parent_view):
         """Affiche une boîte de dialogue de confirmation après modification des métadonnées"""
         from PyQt6.QtWidgets import QMessageBox
