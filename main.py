@@ -17,9 +17,29 @@ from PyQt6.QtGui import QFont
 from models.app_model import ApplicationModel
 
 # Import des contrôleurs et vues
-from views.accueil_view import AccueilKosmosView, AccueilKosmosController
-from views.importation_view import ImportationKosmosView, ImportationKosmosController
-from views.tri_view import TriKosmosView, TriKosmosController
+# 1. Accueil
+try:
+    from views.accueil_view import AccueilView
+    from controllers.accueil_controller import AccueilController
+except ImportError:
+    from views.accueil_view import AccueilKosmosView as AccueilView
+    from controllers.accueil_controller import AccueilKosmosController as AccueilController
+
+# 2. Importation
+try:
+    from views.importation_view import ImportationView
+    from controllers.importation_controller import ImportationController
+except ImportError:
+    from views.importation_view import ImportationKosmosView as ImportationView
+    from controllers.importation_controller import ImportationKosmosController as ImportationController
+
+# 3. Tri
+from views.tri_view import TriKosmosView
+from controllers.tri_controller import TriKosmosController
+
+# 4. Extraction (C'est ici que ça manquait peut-être)
+from views.extraction_view import ExtractionView
+from controllers.extraction_controller import ExtractionKosmosController
 
 
 class KosmosApplication(QMainWindow):
@@ -38,11 +58,13 @@ class KosmosApplication(QMainWindow):
         self.accueil_controller = None
         self.importation_controller = None
         self.tri_controller = None
+        self.extraction_controller = None 
         
         # Vues
         self.accueil_view = None
         self.importation_view = None
         self.tri_view = None
+        self.extraction_view = None
         
         self.init_ui()
         self.init_controllers()
@@ -64,19 +86,26 @@ class KosmosApplication(QMainWindow):
         """Initialise les contrôleurs et les vues"""
         
         # PAGE D'ACCUEIL
-        self.accueil_controller = AccueilKosmosController(self.model)
-        self.accueil_view = AccueilKosmosView(self.accueil_controller)
+        self.accueil_controller = AccueilController(self.model)
+        self.accueil_view = AccueilView(self.accueil_controller)
         self.stack.addWidget(self.accueil_view)
         
         # PAGE D'IMPORTATION
-        self.importation_controller = ImportationKosmosController(self.model)
-        self.importation_view = ImportationKosmosView(self.importation_controller)
+        self.importation_controller = ImportationController(self.model)
+        self.importation_view = ImportationView(self.importation_controller)
         self.stack.addWidget(self.importation_view)
         
         # PAGE DE TRI
         self.tri_controller = TriKosmosController(self.model)
         self.tri_view = TriKosmosView(self.tri_controller)
         self.stack.addWidget(self.tri_view)
+        
+        # PAGE D'EXTRACTION
+        self.extraction_controller = ExtractionKosmosController(self.model)
+        self.extraction_view = ExtractionView(self.extraction_controller)
+        # Important : Lier la vue au contrôleur
+        self.extraction_controller.set_view(self.extraction_view)
+        self.stack.addWidget(self.extraction_view)
         
         # Afficher la page d'accueil par défaut
         self.stack.setCurrentWidget(self.accueil_view)
@@ -95,25 +124,25 @@ class KosmosApplication(QMainWindow):
         # Navigation depuis la page d'importation
         if self.importation_controller:
             self.importation_controller.navigation_demandee.connect(self.naviguer_vers)
+            
+        # Navigation depuis la page de tri
+        if self.tri_controller:
+            self.tri_controller.navigation_demandee.connect(self.naviguer_vers)
+
+        # Navigation depuis la page d'extraction
+        if self.extraction_controller:
+            self.extraction_controller.navigation_demandee.connect(self.naviguer_vers)
         
-        # Gérer les changements d'onglet dans la navbar
-        if self.accueil_view and hasattr(self.accueil_view, 'navbar'):
-            self.accueil_view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
-        
-        if self.importation_view and hasattr(self.importation_view, 'navbar'):
-            self.importation_view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
-        
-        if self.tri_view and hasattr(self.tri_view, 'navbar'):
-            self.tri_view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
+        # Gérer les changements d'onglet dans la navbar (Vue -> Main)
+        for view in [self.accueil_view, self.importation_view, self.tri_view, self.extraction_view]:
+            if view and hasattr(view, 'navbar'):
+                view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
         
         print("✅ Navigation connectée")
     
     def naviguer_vers(self, nom_page: str):
         """
         Navigue vers une page spécifique
-        
-        Args:
-            nom_page: Nom de la page ('accueil', 'importation', 'tri', 'extraction', 'evenements')
         """
         print(f"🔄 Navigation vers : {nom_page}")
         
@@ -126,21 +155,26 @@ class KosmosApplication(QMainWindow):
             
         elif nom_page == "importation":
             self.stack.setCurrentWidget(self.importation_view)
-            # Réinitialiser le flag pour rouvrir le dialogue
-            self.importation_view.auto_open = True
+            if hasattr(self.importation_view, 'auto_open'):
+                self.importation_view.auto_open = True
             
         elif nom_page == "tri":
             if self.tri_view:
-                # Recharger les vidéos
                 self.tri_view.charger_videos()
                 self.stack.setCurrentWidget(self.tri_view)
                 print(f"📹 {len(self.model.obtenir_videos())} vidéo(s) affichée(s)")
             else:
                 print("❌ Page de tri non disponible")
-                
+
+        # --- C'EST ICI QUE ÇA BLOQUAIT AVANT ---      
         elif nom_page == "extraction":
-            print("⚠️ Page d'extraction pas encore implémentée")
-            
+            if self.extraction_view:
+                self.extraction_controller.load_initial_data()
+                self.stack.setCurrentWidget(self.extraction_view)
+            else:
+                print("❌ Page d'extraction non disponible")
+        # ---------------------------------------
+
         elif nom_page == "evenements":
             print("⚠️ Page d'événements pas encore implémentée")
         
@@ -148,56 +182,29 @@ class KosmosApplication(QMainWindow):
             print(f"⚠️ Page inconnue : {nom_page}")
     
     def on_navbar_tab_changed(self, tab_name: str):
-        """
-        Gère le changement d'onglet dans la navbar
-        
-        Args:
-            tab_name: Nom de l'onglet ('Fichier', 'Tri', 'Extraction', 'Évènements')
-        """
-        # Mapper les noms d'onglets vers les pages
+        """Gère le changement d'onglet dans la navbar"""
         mapping = {
             'Fichier': 'accueil',
             'Tri': 'tri',
             'Extraction': 'extraction',
             'Évènements': 'evenements'
         }
-        
         page = mapping.get(tab_name)
         if page:
             self.naviguer_vers(page)
     
     def on_campagne_creee(self, nom: str, emplacement: str):
-        """
-        Appelé quand une campagne est créée
-        
-        Args:
-            nom: Nom de la campagne
-            emplacement: Emplacement de la campagne
-        """
         print(f"✅ Campagne créée : {nom} dans {emplacement}")
     
     def on_campagne_ouverte(self, chemin: str):
-        """
-        Appelé quand une campagne est ouverte
-        
-        Args:
-            chemin: Chemin du fichier de campagne
-        """
         print(f"✅ Campagne ouverte : {chemin}")
     
     def closeEvent(self, event):
-        """Gère la fermeture de l'application"""
-        # Sauvegarder la campagne courante si nécessaire
         if self.model.campagne_courante:
             self.model.sauvegarder_campagne()
             print("💾 Campagne sauvegardée avant fermeture")
-        
         event.accept()
 
-
-# ═══════════════════════════════════════════════════════════════
-# POINT D'ENTRÉE DE L'APPLICATION
-# ═══════════════════════════════════════════════════════════════
 
 def main():
     """Lance l'application KOSMOS"""
@@ -206,22 +213,13 @@ def main():
     print("=" * 60)
     
     app = QApplication(sys.argv)
-    
-    # Configuration de la police
     font = QFont("Montserrat", 10)
     app.setFont(font)
     
-    # Créer et afficher la fenêtre principale
     window = KosmosApplication()
     window.show()
     
     print("\n✅ Application lancée avec succès!")
-    print("\n📋 Pages disponibles:")
-    print("   1. Accueil - Créer/Ouvrir une campagne")
-    print("   2. Importation - Importer les vidéos et métadonnées")
-    print("   3. Tri - Trier et organiser les vidéos")
-    print("   4. Extraction - [À venir]")
-    print("   5. Évènements - [À venir]")
     print("\n" + "=" * 60)
     
     sys.exit(app.exec())

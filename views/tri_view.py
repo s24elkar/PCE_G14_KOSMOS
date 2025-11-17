@@ -626,38 +626,31 @@ class TriKosmosView(QWidget):
         content_layout.setSpacing(2)
         content_layout.setContentsMargins(6, 6, 6, 6)
         
+        # Structure dynamique pour les deux types
+        scroll_area = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout()
+        scroll_layout.setContentsMargins(5, 5, 5, 5)
+        scroll_layout.setSpacing(3)
+        scroll_widget.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_widget)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: black; }")
+        content_layout.addWidget(scroll_area)
+        
         if type_meta == "communes":
+            self.meta_communes_scroll_layout = scroll_layout
             self.meta_communes_fields = {}
-            for key in ['system', 'camera', 'model', 'version']:
-                # Lecture seule permanente pour les métadonnées communes
-                row = self.create_metadata_row(key, readonly=True)
-                self.meta_communes_fields[key] = row['widget']
-                content_layout.addWidget(row['container'])
-            
-            content_layout.addStretch()
-            
-        else: # Metadonnées propres
+            self.meta_communes_widgets = {}
+            # --- MODIFICATION: Suppression du stretch qui causait le rectangle noir ---
+            # content_layout.addStretch() <--- SUPPRIMÉ
+            # --- FIN MODIFICATION ---
+        else:
+            self.meta_propres_scroll_layout = scroll_layout
             self.meta_propres_fields = {}
             self.meta_propres_widgets = {}
-            
-            # Créer un conteneur scrollable pour toutes les métadonnées propres
-            self.meta_propres_scroll_area = QScrollArea()
-            scroll_widget = QWidget()
-            scroll_layout = QVBoxLayout()
-            scroll_layout.setContentsMargins(5, 5, 5, 5)
-            scroll_layout.setSpacing(3)
-            
-            self.meta_propres_scroll_layout = scroll_layout
-            
-            scroll_widget.setLayout(scroll_layout)
-            self.meta_propres_scroll_area.setWidget(scroll_widget)
-            self.meta_propres_scroll_area.setWidgetResizable(True)
-            self.meta_propres_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self.meta_propres_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.meta_propres_scroll_area.setStyleSheet("QScrollArea { border: none; background-color: black; }")
-            
-            content_layout.addWidget(self.meta_propres_scroll_area)
-            
             
             btn_style_sheet = "QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); } QPushButton:disabled { color: #555; border-color: #555; }"
             
@@ -692,7 +685,6 @@ class TriKosmosView(QWidget):
         
         return container
     
-    # --- MODIFICATION: Augmentation de la largeur de l'étiquette ---
     def create_metadata_row(self, key, readonly=True):
         row_widget = QWidget()
         row_layout = QHBoxLayout()
@@ -701,7 +693,6 @@ class TriKosmosView(QWidget):
         
         label = QLabel(f"{key}:")
         label.setStyleSheet("color: white; font-weight: bold; font-size: 10px;")
-        # Augmentation à 110 pour voir les unités
         label.setFixedWidth(110) 
         row_layout.addWidget(label)
         
@@ -713,9 +704,54 @@ class TriKosmosView(QWidget):
         row_widget.setLayout(row_layout)
         
         return {'container': row_widget, 'widget': value_widget}
-    # --- FIN MODIFICATION ---
     
-    # --- MODIFICATION: Logique d'affichage et KEY_LABELS corrigés ---
+    # --- NOUVELLE MÉTHODE: Remplir les communes dynamiquement ---
+    def remplir_metadonnees_communes(self, metadata_communes: dict):
+        self.vider_layout(self.meta_communes_scroll_layout)
+        self.meta_communes_fields.clear()
+        self.meta_communes_widgets.clear()
+        
+        # Traduction des clés
+        KEY_LABELS = {
+            'system_camera': 'Caméra',
+            'system_model': 'Modèle',
+            'system_system': 'Système',
+            'system_version': 'Version',
+            'campaign_zoneDict_campaign': 'Campagne',
+            'campaign_zoneDict_zone': 'Zone',
+            'campaign_zoneDict_locality': 'Localité',
+            'campaign_zoneDict_protection': 'Protection',
+            'campaign_dateDict_date': 'Date',
+            'campaign_deploiementDict_boat': 'Bateau',
+            'campaign_deploiementDict_pilot': 'Pilote',
+            'campaign_deploiementDict_crew': 'Équipage',
+            'campaign_deploiementDict_partners': 'Partenaires'
+        }
+
+        sections = {}
+        for key, value in metadata_communes.items():
+            if '_' in key:
+                section_name = key.split('_')[0]
+                if section_name not in sections: sections[section_name] = {}
+                sections[section_name][key] = value
+
+        ordered_sections = ['system', 'campaign']
+        
+        for section_name in ordered_sections:
+            if section_name not in sections: continue
+            
+            section_label = QLabel(f"{section_name.upper()}")
+            section_label.setStyleSheet("color: white; font-weight: bold; font-size: 11px; padding: 5px 0px 2px 0px;")
+            self.meta_communes_scroll_layout.addWidget(section_label)
+            
+            for full_key, value in sections[section_name].items():
+                display_label = KEY_LABELS.get(full_key, full_key)
+                row = self.create_metadata_row(display_label, readonly=True)
+                row['widget'].setText(str(value))
+                self.meta_communes_fields[full_key] = row['widget']
+                self.meta_communes_widgets[full_key] = row['container']
+                self.meta_communes_scroll_layout.addWidget(row['container'])
+
     def remplir_metadonnees_propres(self, metadata_propres: dict):
         """Remplit dynamiquement la section des métadonnées propres"""
         
@@ -818,7 +854,6 @@ class TriKosmosView(QWidget):
                 self.meta_propres_fields[full_key] = row['widget']
                 self.meta_propres_widgets[full_key] = row['container']
                 self.meta_propres_scroll_layout.addWidget(row['container'])
-    # --- FIN MODIFICATION ---
     
     def vider_layout(self, layout):
         if layout is not None:
@@ -885,20 +920,14 @@ class TriKosmosView(QWidget):
             self.controller.selectionner_video(nom_video)
     
     def afficher_video(self, video):
-        """Slot : Met à jour toute la partie droite lors de la sélection"""
         self.video_selectionnee = video
-        
         print(f"\n📹 Vidéo sélectionnée : {video.nom}")
         
         if self.controller:
             self.controller.charger_metadonnees_depuis_json(video)
             self.controller.charger_metadonnees_communes_depuis_json(video)
         
-        self.meta_communes_fields['system'].setText(video.metadata_communes.get('system', ''))
-        self.meta_communes_fields['camera'].setText(video.metadata_communes.get('camera', ''))
-        self.meta_communes_fields['model'].setText(video.metadata_communes.get('model', ''))
-        self.meta_communes_fields['version'].setText(video.metadata_communes.get('version', ''))
-        
+        self.remplir_metadonnees_communes(video.metadata_communes)
         self.remplir_metadonnees_propres(video.metadata_propres)
         
         if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
@@ -912,17 +941,14 @@ class TriKosmosView(QWidget):
         
         if self.controller:
             self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
-            
             try:
                 self.lancer_extraction_previews(video.chemin, self.current_seek_info)
-                
                 for idx, thumb in enumerate(self.thumbnails):
                     if idx < len(self.current_seek_info):
                         seek_time_str, duration = self.current_seek_info[idx]
                         thumb.set_video_preview_info(video.chemin, seek_time_str, duration)
                     else:
                         thumb.set_video_preview_info(None, "00:00:00", 0)
-                
             except Exception as e:
                 print(f"⚠️ Aperçus vidéo non disponibles: {e}")
     
@@ -930,145 +956,86 @@ class TriKosmosView(QWidget):
         if not self.video_selectionnee:
             QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à renommer.")
             return
-        
         dialogue = DialogueRenommer(self.video_selectionnee.nom, self)
-        
         if dialogue.exec() == QDialog.DialogCode.Accepted:
             nouveau_nom = dialogue.get_nouveau_nom()
-            
             if not nouveau_nom:
                 QMessageBox.warning(self, "Nom vide", "Le nouveau nom ne peut pas être vide.")
                 return
-            
-            if nouveau_nom == self.video_selectionnee.nom:
-                return
-            
-            reponse = QMessageBox.question(
-                self,
-                "Confirmer le renommage",
-                f"Voulez-vous vraiment renommer :\n\n'{self.video_selectionnee.nom}'\n\nen\n\n'{nouveau_nom}' ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
+            if nouveau_nom == self.video_selectionnee.nom: return
+            reponse = QMessageBox.question(self, "Confirmer le renommage", f"Voulez-vous vraiment renommer :\n\n'{self.video_selectionnee.nom}'\n\nen\n\n'{nouveau_nom}' ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reponse == QMessageBox.StandardButton.Yes:
                 if self.controller.renommer_video(self.video_selectionnee.nom, nouveau_nom):
                     QMessageBox.information(self, "Succès", f"Vidéo renommée en '{nouveau_nom}'")
                     self.charger_videos()
-                else:
-                    QMessageBox.critical(self, "Erreur", "Impossible de renommer la vidéo.")
+                else: QMessageBox.critical(self, "Erreur", "Impossible de renommer la vidéo.")
     
     def on_supprimer(self):
         if not self.video_selectionnee:
             QMessageBox.warning(self, "Aucune vidéo", "Veuillez sélectionner une vidéo à supprimer.")
             return
-        
-        reponse = QMessageBox.question(
-            self,
-            "Confirmer la suppression",
-            f"⚠️ ATTENTION : Cette action est IRRÉVERSIBLE !\n\nLa vidéo sera DÉFINITIVEMENT supprimée de votre disque dur :\n\n'{self.video_selectionnee.nom}'\n\nVoulez-vous continuer ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
+        reponse = QMessageBox.question(self, "Confirmer la suppression", f"⚠️ ATTENTION : Cette action est IRRÉVERSIBLE !\n\nLa vidéo sera DÉFINITIVEMENT supprimée de votre disque dur :\n\n'{self.video_selectionnee.nom}'\n\nVoulez-vous continuer ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reponse == QMessageBox.StandardButton.Yes:
             if self.controller.supprimer_video(self.video_selectionnee.nom):
                 QMessageBox.information(self, "Succès", f"✅ Vidéo '{self.video_selectionnee.nom}' supprimée définitivement")
                 self.video_selectionnee = None
                 self.charger_videos()
-            else:
-                QMessageBox.critical(self, "Erreur", "❌ Impossible de supprimer la vidéo.")
+            else: QMessageBox.critical(self, "Erreur", "❌ Impossible de supprimer la vidéo.")
     
     def on_modifier_metadata_propres(self):
-        if not (self.video_selectionnee and self.controller):
-            return
-
+        if not (self.video_selectionnee and self.controller): return
         if not self.edit_propres:
-            for w in self.meta_propres_fields.values():
-                w.setReadOnly(False)
+            for w in self.meta_propres_fields.values(): w.setReadOnly(False)
             self.edit_propres = True
-            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
-                self.btn_modifier_propres.setText("OK")
-            # Désactiver le pré-calcul pendant l'édition
-            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
-                self.btn_precalculer_propres.setEnabled(False)
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres: self.btn_modifier_propres.setText("OK")
+            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres: self.btn_precalculer_propres.setEnabled(False)
             return
 
         nouvelles_meta = {}
         for key, widget in self.meta_propres_fields.items():
             nouvelles_meta[key] = widget.text()
         
-        ok = self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta)
+        succes, message = self.controller.modifier_metadonnees_propres(self.video_selectionnee.nom, nouvelles_meta)
 
-        if ok:
+        if succes:
             self.controller.show_success_dialog(self)
-            
-            for w in self.meta_propres_fields.values():
-                w.setReadOnly(True)
+            for w in self.meta_propres_fields.values(): w.setReadOnly(True)
             self.edit_propres = False
-            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
-                self.btn_modifier_propres.setText("Modifier")
-            # Réactiver le pré-calcul
-            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
-                self.btn_precalculer_propres.setEnabled(True)
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres: self.btn_modifier_propres.setText("Modifier")
+            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres: self.btn_precalculer_propres.setEnabled(True)
         else:
-            QMessageBox.warning(self, "Erreur", "Impossible de sauvegarder les métadonnées")
+            QMessageBox.warning(self, "Erreur", message)
 
     def on_precalculer_metadata(self):
-        if not (self.video_selectionnee and self.controller):
-            return
-
-        # Désactiver les boutons pendant le calcul
+        if not (self.video_selectionnee and self.controller): return
         self.btn_precalculer_propres.setEnabled(False)
         self.btn_modifier_propres.setEnabled(False)
         self.btn_precalculer_propres.setText("Calcul...")
-        QApplication.processEvents() # Forcer la mise à jour de l'UI
-
+        QApplication.processEvents() 
         try:
             success = self.controller.precalculer_metadonnees_externes(self.video_selectionnee.nom)
-            
-            if success:
-                QMessageBox.information(self, "Succès", "Les métadonnées externes ont été récupérées et sauvegardées.")
-            else:
-                QMessageBox.warning(self, "Échec", "Impossible de récupérer les métadonnées externes. Vérifiez la console pour les erreurs.")
-                
-        except Exception as e:
-            print(f"Erreur lors du pré-calcul: {e}")
-            QMessageBox.critical(self, "Erreur", f"Une erreur est survenue: {e}")
-
-        # Réactiver les boutons et rafraîchir la vue
+            if success: QMessageBox.information(self, "Succès", "Les métadonnées externes ont été récupérées et sauvegardées.")
+            else: QMessageBox.warning(self, "Échec", "Impossible de récupérer les métadonnées externes. Vérifiez la console pour les erreurs.")
+        except Exception as e: QMessageBox.critical(self, "Erreur", f"Une erreur est survenue: {e}")
         self.btn_precalculer_propres.setText("Pré-calculer")
-        # Re-sélectionner la vidéo va appeler 'afficher_video' et rafraîchir les champs
         self.controller.selectionner_video(self.video_selectionnee.nom)
-
 
 # TEST
 if __name__ == '__main__':
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QSizePolicy # Ajout de QSizePolicy
-    
+    from PyQt6.QtWidgets import QApplication, QMainWindow
     sys.path.insert(0, str(Path(__file__).parent))
-    
-    try:
-        from models.app_model import ApplicationModel
-    except ImportError:
-        print("❌ Impossible d'importer ApplicationModel")
-        sys.exit(1)
-    
+    try: from models.app_model import ApplicationModel
+    except ImportError: sys.exit(1)
     app = QApplication(sys.argv)
     font = QFont("Montserrat", 10)
     app.setFont(font)
-    
     model = ApplicationModel()
     campagne = model.creer_campagne("Test_Tri", "./test_campagne")
-    
     controller = TriKosmosController(model)
-    
     window = QMainWindow()
     window.setWindowFlags(Qt.WindowType.FramelessWindowHint)
     window.setGeometry(50, 50, 1400, 900)
-    
     view = TriKosmosView(controller)
     window.setCentralWidget(view)
-    
     window.show()
-    print("✅ Page de tri lancée!")
     sys.exit(app.exec())
