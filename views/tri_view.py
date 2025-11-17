@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QTableWidget, QTableWidgetItem, QSplitter,
     QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog, QScrollArea,
-    QSizePolicy, QApplication  # <-- Imports nécessaires
+    QSizePolicy, QApplication
 )
 # --- AJOUT QTimer et QImage ---
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QSize
@@ -106,7 +106,7 @@ class AnimatedThumbnailLabel(QLabel):
         super().__init__(parent)
         self.static_pixmap = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("background-color: black; border: none; color: #888;") # Pas de bordure, fond noir
+        self.setStyleSheet("background-color: black; border: none; color: #888;")
         self.setText("🔄")
         
         self.video_path = None
@@ -518,7 +518,6 @@ class TriKosmosView(QWidget):
         label_apercu.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white; color: black;")
         apercu_layout.addWidget(label_apercu)
         
-        # Le QWidget qui contient la grille 2x3
         thumbnails_widget = QWidget()
         thumbnails_layout = QGridLayout()
         thumbnails_layout.setSpacing(6)
@@ -527,17 +526,14 @@ class TriKosmosView(QWidget):
         self.thumbnails = []
         self.thumbnail_labels = [] 
         
-        # Ratio 2028:1080 = ~1.87
         thumbnail_min_width = 300 
-        thumbnail_min_height = int(thumbnail_min_width / 1.87) # ~160
+        thumbnail_min_height = int(thumbnail_min_width / 1.87)
         thumbnail_max_width = 550 
-        thumbnail_max_height = int(thumbnail_max_width / 1.87) # ~294
-
+        thumbnail_max_height = int(thumbnail_max_width / 1.87)
 
         idx_counter = 1
         for row in range(2):
             for col in range(3):
-                # 1. Créer la miniature
                 thumb = AnimatedThumbnailLabel() 
                 thumb.setMinimumSize(thumbnail_min_width, thumbnail_min_height)
                 thumb.setMaximumSize(thumbnail_max_width, thumbnail_max_height)
@@ -547,13 +543,11 @@ class TriKosmosView(QWidget):
                 )
                 self.thumbnails.append(thumb) 
 
-                # 2. Créer l'étiquette
                 label = QLabel(f"Angle de vue n°{idx_counter}")
                 label.setStyleSheet("color: #aaa; font-size: 10px; font-weight: bold;")
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.thumbnail_labels.append(label) 
 
-                # 3. Créer un layout vertical pour la miniature et son étiquette
                 item_layout = QVBoxLayout()
                 item_layout.setContentsMargins(0, 0, 0, 0)
                 item_layout.setSpacing(4) 
@@ -563,12 +557,10 @@ class TriKosmosView(QWidget):
                 item_layout.addWidget(label, 0) 
                 item_layout.addStretch() 
                 
-                # 4. Créer un widget conteneur pour ce layout
                 item_widget = QWidget()
                 item_widget.setStyleSheet("background-color: transparent; border: none;")
                 item_widget.setLayout(item_layout)
                 
-                # 5. Ajouter le widget conteneur à la grille principale
                 thumbnails_layout.addWidget(item_widget, row, col, Qt.AlignmentFlag.AlignCenter)
                 
                 idx_counter += 1
@@ -600,7 +592,6 @@ class TriKosmosView(QWidget):
         meta_splitter.setStretchFactor(1, 1)
 
         
-        # Donner plus de place aux miniatures
         layout.addWidget(apercu_container, stretch=2) 
         layout.addWidget(meta_splitter, stretch=1)
         
@@ -654,16 +645,14 @@ class TriKosmosView(QWidget):
             
             btn_style_sheet = "QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); } QPushButton:disabled { color: #555; border-color: #555; }"
             
-            # Nouveau bouton "Pré-calculer"
             btn_precalculer = QPushButton("Pré-calculer")
             btn_precalculer.setFixedSize(90, 26)
             btn_precalculer.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_precalculer.setStyleSheet(btn_style_sheet)
             btn_precalculer.clicked.connect(self.on_precalculer_metadata)
-            btn_precalculer.setEnabled(False)  # Désactivé jusqu'à sélection
+            btn_precalculer.setEnabled(False)
             self.btn_precalculer_propres = btn_precalculer
             
-            # Bouton "Modifier" existant
             btn_modifier = QPushButton("Modifier")
             btn_modifier.setFixedSize(90, 26)
             btn_modifier.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -674,7 +663,7 @@ class TriKosmosView(QWidget):
             
             btn_layout = QHBoxLayout()
             btn_layout.addStretch()
-            btn_layout.addWidget(btn_precalculer) # Ajout du bouton
+            btn_layout.addWidget(btn_precalculer)
             btn_layout.addWidget(btn_modifier)
             btn_layout.setContentsMargins(0, 4, 0, 4)
             content_layout.addLayout(btn_layout)
@@ -755,8 +744,6 @@ class TriKosmosView(QWidget):
     def remplir_metadonnees_propres(self, metadata_propres: dict):
         """Remplit dynamiquement la section des métadonnées propres"""
         
-        # Dictionnaire pour "traduire" les clés en étiquettes avec unités
-        # Basé EXACTEMENT sur les clés du JSON
         KEY_LABELS = {
             # GPS
             'latitude': 'Latitude (°)',
@@ -799,10 +786,8 @@ class TriKosmosView(QWidget):
         self.meta_propres_fields.clear()
         self.meta_propres_widgets.clear()
         
-        # Organiser les métadonnées par section
         sections = {}
         for full_key, value in metadata_propres.items():
-            # Ne pas afficher les clés de la section 'campaign'
             if full_key.startswith('campaign_'):
                 continue
             
@@ -811,14 +796,12 @@ class TriKosmosView(QWidget):
                 
                 if section_name not in sections:
                     sections[section_name] = {}
-                sections[section_name][field_name] = (full_key, value) # Stocker clé complète + valeur
+                sections[section_name][field_name] = (full_key, value)
             else:
-                # Gérer les clés sans préfixe (au cas où)
                 if 'general' not in sections:
                     sections['general'] = {}
                 sections['general'][full_key] = (full_key, value)
 
-        # Ordre d'affichage souhaité des sections
         ordered_sections = ['stationDict', 'hourDict', 'gpsDict', 'meteoAirDict', 'meteoMerDict', 'astroDict', 'ctdDict', 'analyseDict', 'general']
 
         for section_name in ordered_sections:
@@ -829,25 +812,20 @@ class TriKosmosView(QWidget):
             if not fields:
                 continue
                 
-            # Titre de section
             section_label = QLabel(f"{section_name.replace('Dict', '').upper()}")
             section_label.setStyleSheet("color: white; font-weight: bold; font-size: 11px; padding: 5px 0px 2px 0px;")
             self.meta_propres_scroll_layout.addWidget(section_label)
             
-            # Champs de la section
-            # Trier les champs par leur nom pour un affichage cohérent
             sorted_fields = sorted(fields.items(), key=lambda item: item[0])
 
             for field_name, (full_key, value) in sorted_fields:
                 
-                # Utiliser le dictionnaire pour obtenir une étiquette propre
-                display_label = KEY_LABELS.get(field_name, field_name) # On utilise le nom du champ, pas la clé complète
+                display_label = KEY_LABELS.get(field_name, field_name)
                 
                 row = self.create_metadata_row(display_label, readonly=True)
                 
-                # Gérer l'affichage de 'None' ou 'N/A (API)'
                 if value in ["None", "null", "N/A (API)"]:
-                    row['widget'].setText("") # Afficher un champ vide
+                    row['widget'].setText("")
                 else:
                     row['widget'].setText(str(value))
                 

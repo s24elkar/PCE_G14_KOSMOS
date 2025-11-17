@@ -265,9 +265,9 @@ class ApplicationModel:
                     
                     for fichier in fichiers[:10]:
                         ext = os.path.splitext(fichier)[1]
-                        print(f"       - {fichier} [{ext}]")
+                        print(f"       - {fichier} [{ext}]")
                     if len(fichiers) > 10:
-                        print(f"       ... et {len(fichiers) - 10} autres fichiers")
+                        print(f"       ... et {len(fichiers) - 10} autres fichiers")
                     
                     videos_trouvees = []
                     for fichier in fichiers:
@@ -282,7 +282,7 @@ class ApplicationModel:
                     print(f"   ✅ {len(videos_trouvees)} vidéo(s) trouvée(s)")
                     
                     for nom_video in videos_trouvees:
-                        print(f"       📹 {nom_video}")
+                        print(f"       📹 {nom_video}")
                         chemin_video = os.path.join(chemin_dossier, nom_video)
                         
                         # Créer l'objet vidéo
@@ -298,26 +298,26 @@ class ApplicationModel:
                                     hmsos = meta_json.get('video', {}).get('hourDict', {}).get('HMSOS', None)
                                     if hmsos:
                                         video.start_time_str = hmsos
-                                        print(f"       ... Heure début JSON chargée : {hmsos}")
+                                        print(f"       ... Heure début JSON chargée : {hmsos}")
                                     else:
-                                        print(f"       ... Clé 'HMSOS' non trouvée dans {json_path}")
+                                        print(f"       ... Clé 'HMSOS' non trouvée dans {json_path}")
                             except Exception as e:
-                                print(f"       ... Erreur lecture JSON {json_path}: {e}")
+                                print(f"       ... Erreur lecture JSON {json_path}: {e}")
                         else:
-                             print(f"       ... Fichier JSON non trouvé : {json_path}")
+                             print(f"       ... Fichier JSON non trouvé : {json_path}")
                         # --- FIN BLOC LECTURE JSON ---
 
                         # Charger les métadonnées depuis le CSV du dossier
                         chemin_csv = os.path.join(chemin_dossier, f"{nom_dossier}.csv")
                         
                         if os.path.exists(chemin_csv):
-                            print(f"       📊 CSV trouvé : {nom_dossier}.csv")
+                            print(f"       📊 CSV trouvé : {nom_dossier}.csv")
                             if self._charger_metadata_kosmos_csv(video, chemin_csv):
                                 resultats['videos_importees'].append(video.nom)
                             else:
                                 resultats['videos_sans_metadata'].append(video.nom)
                         else:
-                            print(f"       ⚠️ Pas de CSV trouvé")
+                            print(f"       ⚠️ Pas de CSV trouvé")
                             resultats['videos_sans_metadata'].append(video.nom)
                         
                         if self.campagne_courante:
@@ -331,7 +331,7 @@ class ApplicationModel:
             print(f"📊 RÉSULTATS")
             print(f"{'='*60}")
             print(f"✅ Vidéos importées : {len(resultats['videos_importees'])}")
-            print(f"⚠️   Sans métadonnées : {len(resultats['videos_sans_metadata'])}")
+            print(f"⚠️   Sans métadonnées : {len(resultats['videos_sans_metadata'])}")
             print(f"❌ Erreurs : {len(resultats['erreurs'])}")
             print(f"{'='*60}\n")
                             
@@ -376,14 +376,14 @@ class ApplicationModel:
                     reader = csv.DictReader(f, dialect=dialect)
                 except csv.Error:
                     f.seek(0)
-                    print(f"       ... Avertissement: Délimiteur CSV non détecté, utilisation de ';' par défaut.")
+                    print(f"       ... Avertissement: Délimiteur CSV non détecté, utilisation de ';' par défaut.")
                     reader = csv.DictReader(f, delimiter=';')
                 
                 
                 # Lire la première ligne de données
                 row = next(reader, None)
                 if not row:
-                    print(f"       ... Avertissement: CSV {chemin_csv} est vide.")
+                    print(f"       ... Avertissement: CSV {chemin_csv} est vide.")
                     return False
 
                 # Créer un dictionnaire de clés normalisées (minuscules)
@@ -404,7 +404,7 @@ class ApplicationModel:
                 # 'charger_metadonnees_depuis_json' dans le contrôleur.
                 # --- FIN MODIFICATION ---
 
-                print(f"       ... Données communes (Système, Durée) chargées depuis CSV.")
+                print(f"       ... Données communes (Système, Durée) chargées depuis CSV.")
 
             return True
             
@@ -529,7 +529,7 @@ class ApplicationModel:
             return self.campagne_courante.videos
         return []
 
-    # --- MÉTHODES POUR LES MINIATURES D'ANGLE (Inchangées) ---
+    # --- MÉTHODES POUR LES MINIATURES D'ANGLE ---
 
     def _parse_time_to_seconds(self, time_str: str) -> int:
         """
@@ -564,7 +564,7 @@ class ApplicationModel:
     def get_angle_event_times(self, nom_video: str) -> list[tuple[str, int]]:
         """
         Calcule les temps de "seek" et les DURÉES pour les 6 
-        premiers événements "START MOTEUR" trouvés...
+        premiers événements "START MOTEUR" trouvés depuis le systemEvent.csv
         """
         if not self.campagne_courante:
             return []
