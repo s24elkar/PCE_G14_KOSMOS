@@ -64,7 +64,6 @@ class TriKosmosController(QObject):
     def supprimer_video(self, nom_video: str) -> bool:
         """Supprime définitivement une vidéo (fichier + liste)"""
         try:
-            # Récupérer la vidéo
             video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
             
             if not video:
@@ -73,7 +72,6 @@ class TriKosmosController(QObject):
             
             chemin_fichier = Path(video.chemin)
             
-            # 1. Supprimer le fichier physique
             if chemin_fichier.exists():
                 try:
                     os.remove(chemin_fichier)
@@ -84,11 +82,9 @@ class TriKosmosController(QObject):
             else:
                 print(f"⚠️ Fichier déjà supprimé ou introuvable: {chemin_fichier}")
             
-            # 2. Supprimer de la liste de la campagne
             self.model.campagne_courante.supprimer_video(nom_video)
             print(f"✅ Vidéo retirée de la campagne: {nom_video}")
             
-            # 3. Désélectionner si c'était la vidéo sélectionnée
             if self.model.video_selectionnee and self.model.video_selectionnee.nom == nom_video:
                 self.model.video_selectionnee = None
             
@@ -114,7 +110,6 @@ class TriKosmosController(QObject):
             
             video.metadata_propres.clear()
             
-            # Fonction interne pour aplatir les dictionnaires
             def flatten_dict(section_data, prefix=''):
                 for key, value in section_data.items():
                     if isinstance(value, dict):
@@ -123,13 +118,11 @@ class TriKosmosController(QObject):
                         full_key = f"{prefix}{key}"
                         video.metadata_propres[full_key] = str(value) if value is not None else ""
 
-            # Charger la section "video"
             if 'video' in data:
                 flatten_dict(data['video'])
 
-            # Charger la section "campaign"
             if 'campaign' in data:
-                flatten_dict(data['campaign'], prefix="campaign_") # Préfixe pour éviter les conflits
+                flatten_dict(data['campaign'], prefix="campaign_")
             
             print(f"✅ Métadonnées (vidéo + campagne) chargées depuis JSON pour {video.nom}")
             print(f"   {len(video.metadata_propres)} champs chargés")
@@ -213,7 +206,6 @@ class TriKosmosController(QObject):
                                 video_section[section_name][field_name] = value
                             except Exception:
                                 video_section[section_name][field_name] = value
-                
             
             from tempfile import NamedTemporaryFile
             tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
@@ -243,6 +235,38 @@ class TriKosmosController(QObject):
             
             return self.sauvegarder_metadonnees_vers_json(video, nom_utilisateur)
         return False
+
+    def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
+        """Modifie les métadonnées communes pour TOUTES les vidéos de la campagne"""
+        if not self.model.campagne_courante:
+            return False
+            
+        try:
+            toutes_videos = self.model.obtenir_videos()
+            if not toutes_videos:
+                print("❌ Aucune vidéo trouvée dans la campagne")
+                return False
+            
+            videos_mises_a_jour = []
+            for video in toutes_videos:
+                for key, value in metadonnees.items():
+                    video.metadata_communes[key] = value
+                videos_mises_a_jour.append(video)
+            
+            succes = True
+            for video in videos_mises_a_jour:
+                if not self.sauvegarder_metadonnees_communes_vers_json(video, nom_utilisateur):
+                    succes = False
+                    print(f"❌ Erreur lors de la sauvegarde pour {video.nom}")
+            
+            if succes:
+                print(f"✅ Métadonnées communes mises à jour pour {len(videos_mises_a_jour)} vidéo(s)")
+            
+            return succes
+            
+        except Exception as e:
+            print(f"❌ Erreur modification métadonnées communes: {e}")
+            return False
     
     def get_video_by_name(self, nom_video: str):
         """Retourne l'objet vidéo via le modèle courant."""
@@ -257,7 +281,6 @@ class TriKosmosController(QObject):
         """
         return self.model.get_angle_event_times(nom_video)
 
-    # --- MÉTHODE MISE À JOUR (APPEL À DEUX APIS) ---
     def precalculer_metadonnees_externes(self, nom_video: str) -> bool:
         """
         Tente de récupérer les métadonnées (météo + astro) depuis Internet
@@ -272,7 +295,6 @@ class TriKosmosController(QObject):
             print(f"❌ Vidéo non trouvée pour pré-calcul: {nom_video}")
             return False
 
-        # 1. Extraire les données nécessaires du JSON
         try:
             lat_str = video.metadata_propres.get('gpsDict_latitude', 'N/A')
             lon_str = video.metadata_propres.get('gpsDict_longitude', 'N/A')
@@ -304,37 +326,32 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur lors de l'extraction des métadonnées locales: {e}")
             return False
 
-        
         data_meteo_trouvee = False
         data_astro_trouvee = False
 
-        # 2. APPEL 1: Open-Meteo pour la MÉTÉO (Air ET Mer)
+        # APPEL 1: Open-Meteo pour la MÉTÉO (Air ET Mer)
         try:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
             is_future = date_obj > datetime.now().date()
             
-            # --- MODIFICATION: Appel à l'API Marine (pour passé et futur) ---
             if is_future:
-                # API de prévision marine
                 API_URL = "https://api.open-meteo.com/v1/forecast"
                 params = {
                     "latitude": lat, "longitude": lon,
                     "start_date": date_str, "end_date": date_str,
-                    "hourly": "temperature_2m,windspeed_10m,wave_height,swell_wave_height", # Données complètes
+                    "hourly": "temperature_2m,windspeed_10m,wave_height,swell_wave_height",
                     "timezone": "auto"
                 }
                 print(f"   Appel API Prévision Météo/Marine: {API_URL}")
             else:
-                # API Marine Historique
                 API_URL = "https://marine-api.open-meteo.com/v1/marine"
                 params = {
                     "latitude": lat, "longitude": lon,
                     "start_date": date_str, "end_date": date_str,
-                    "hourly": "wave_height,swell_wave_height", # Données marines
+                    "hourly": "wave_height,swell_wave_height",
                     "timezone": "auto"
                 }
                 print(f"   Appel API Marine (Historique): {API_URL}")
-            # --- FIN MODIFICATION ---
 
             response_meteo = requests.get(API_URL, params=params, timeout=10)
             response_meteo.raise_for_status() 
@@ -342,8 +359,6 @@ class TriKosmosController(QObject):
             
             hourly_data = data_meteo.get('hourly', {})
 
-            # --- MODIFICATION: Logique de parsing séparée ---
-            # Parser Météo Air (uniquement si non-historique, car l'API Marine ne le fournit pas)
             if is_future and 'temperature_2m' in hourly_data and hourly_data['temperature_2m'][heure_index] is not None:
                 temp_air = hourly_data['temperature_2m'][heure_index]
                 wind_speed_kmh = hourly_data['windspeed_10m'][heure_index]
@@ -353,7 +368,6 @@ class TriKosmosController(QObject):
                 data_meteo_trouvee = True
                 print(f"   ✅ Données Météo Air (Prévision) trouvées: Temp: {temp_air}°C, Vent: {wind_speed_kmh} km/h")
             elif not is_future:
-                # Si c'est historique, on doit faire un 2e appel à l'API archive
                 print("   ℹ️ Date historique, appel séparé pour la météo terrestre...")
                 API_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
                 params_archive = {
@@ -377,18 +391,16 @@ class TriKosmosController(QObject):
             else:
                 print(f"   ⚠️ Données météo air non trouvées pour l'heure {heure_index}")
 
-            # Parser Météo Mer (devrait fonctionner pour les 2 APIs)
             if 'wave_height' in hourly_data and hourly_data['wave_height'][heure_index] is not None:
                 wave_height = hourly_data['wave_height'][heure_index]
                 swell_height = hourly_data['swell_wave_height'][heure_index]
 
-                video.metadata_propres['meteoMerDict_seaState'] = str(round(wave_height, 1)) # État mer = hauteur vagues
-                video.metadata_propres['meteoMerDict_swell'] = str(round(swell_height, 1)) # Houle
+                video.metadata_propres['meteoMerDict_seaState'] = str(round(wave_height, 1))
+                video.metadata_propres['meteoMerDict_swell'] = str(round(swell_height, 1))
                 data_meteo_trouvee = True
                 print(f"   ✅ Données Météo Mer trouvées: État Mer (H. Vagues): {wave_height}m, Houle: {swell_height}m")
             else:
-                 print(f"   ⚠️ Données météo mer (houle/vagues) non trouvées.")
-            # --- FIN MODIFICATION ---
+                print(f"   ⚠️ Données météo mer (houle/vagues) non trouvées.")
 
         except Exception as e:
             print(f"❌ Erreur lors de l'appel à l'API Open-Meteo: {e}")
@@ -397,8 +409,7 @@ class TriKosmosController(QObject):
             else:
                 print("   L'erreur n'a pas de corps de réponse (timeout ou erreur réseau).")
 
-
-        # 3. APPEL 2: wttr.in pour l'ASTRO (Phase de lune)
+        # APPEL 2: wttr.in pour l'ASTRO (Phase de lune)
         try:
             WTTR_URL = f"https://wttr.in/{lat},{lon}?format=j1&date={date_str}&lang=fr"
             print(f"   Appel API Astro: {WTTR_URL}")
@@ -422,20 +433,16 @@ class TriKosmosController(QObject):
             else:
                 print("   L'erreur n'a pas de corps de réponse (timeout ou erreur réseau).")
 
-
-        # 4. Sauvegarder si au moins une donnée a été trouvée
         if data_meteo_trouvee or data_astro_trouvee:
-            # Ne pas écraser les champs de marée s'ils sont déjà remplis
             if 'astroDict_coefficient' not in video.metadata_propres or video.metadata_propres['astroDict_coefficient'] in [None, ""]:
-                 video.metadata_propres['astroDict_coefficient'] = None # Reste vide pour saisie manuelle
+                video.metadata_propres['astroDict_coefficient'] = None
             if 'astroDict_tide' not in video.metadata_propres or video.metadata_propres['astroDict_tide'] in [None, ""]:
-                 video.metadata_propres['astroDict_tide'] = None # Reste vide pour saisie manuelle
+                video.metadata_propres['astroDict_tide'] = None
             
             return self.sauvegarder_metadonnees_vers_json(video)
         else:
             print("❌ Aucune donnée externe n'a pu être récupérée.")
             return False
-    
     
     def show_success_dialog(self, parent_view):
         """Affiche une boîte de dialogue de confirmation après modification des métadonnées"""
