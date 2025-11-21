@@ -251,6 +251,96 @@ class TriKosmosController(QObject):
         else:
             return False, "Erreur lors de l'écriture du fichier JSON."
     # --- FIN MODIFICATION ---
+
+    def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
+        """
+        Modifie les métadonnées communes (sections 'system' et 'campaign') dans le JSON.
+        Retourne un tuple (succès, message_erreur).
+        """
+        video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
+        if not video:
+            return False, "Vidéo introuvable."
+
+        # Validation optionnelle (si nécessaire)
+        # Pas de validation stricte pour les métadonnées communes (texte libre généralement)
+
+        # Mise à jour en mémoire
+        for key, value in metadonnees.items():
+            video.metadata_communes[key] = value
+        
+        # Sauvegarde dans le JSON
+        if self.sauvegarder_metadonnees_communes_vers_json(video, nom_utilisateur):
+            return True, "Sauvegarde réussie."
+        else:
+            return False, "Erreur lors de l'écriture du fichier JSON."
+
+
+    def sauvegarder_metadonnees_communes_vers_json(self, video, nom_utilisateur: str = "User") -> bool:
+        """Sauvegarde les métadonnées communes (sections system et campaign) dans le JSON"""
+        try:
+            dossier = Path(video.chemin).parent
+            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
+            json_path = dossier / f"{dossier_numero}.json"
+            
+            if not json_path.exists():
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Initialiser les sections si besoin
+            if 'system' not in data:
+                data['system'] = {}
+            if 'campaign' not in data:
+                data['campaign'] = {}
+            
+            # Fonction pour reconstruire la structure imbriquée
+            def set_nested_value(d, key_path, value):
+                """
+                Définit une valeur dans un dictionnaire imbriqué.
+                key_path format: "section_subsection_field" ou "section_field"
+                """
+                parts = key_path.split('_')
+                section = parts[0]  # 'system' ou 'campaign'
+                
+                if section not in d:
+                    d[section] = {}
+                
+                current = d[section]
+                for part in parts[1:-1]:  # Naviguer dans les sous-sections
+                    if part not in current:
+                        current[part] = {}
+                    current = current[part]
+                
+                # Définir la valeur finale
+                field_name = parts[-1]
+                if value == "" or value == "None":
+                    current[field_name] = None
+                else:
+                    current[field_name] = value
+            
+            # Appliquer toutes les modifications
+            for key, value in video.metadata_communes.items():
+                set_nested_value(data, key, value)
+            
+            # Sauvegarde atomique
+            from tempfile import NamedTemporaryFile
+            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
+            try:
+                with tmp as tf:
+                    json.dump(data, tf, indent=4, ensure_ascii=False)
+                Path(tmp.name).replace(json_path)
+            finally:
+                try:
+                    Path(tmp.name).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            
+            print(f"✅ Métadonnées communes sauvegardées dans: {json_path}")
+            return True
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde communes JSON: {e}")
+            return False
     
     def get_video_by_name(self, nom_video: str):
         if not self.model.campagne_courante: return None

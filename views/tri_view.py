@@ -426,6 +426,7 @@ class TriKosmosView(QWidget):
         self.preview_extractor = None 
         self.current_seek_info = []
         self.edit_propres = False
+        self.edit_communes = False
         
         self.init_ui()
         self.connecter_signaux()
@@ -635,9 +636,23 @@ class TriKosmosView(QWidget):
             self.meta_communes_scroll_layout = scroll_layout
             self.meta_communes_fields = {}
             self.meta_communes_widgets = {}
-            # --- MODIFICATION: Suppression du stretch qui causait le rectangle noir ---
-            # content_layout.addStretch() <--- SUPPRIMÉ
-            # --- FIN MODIFICATION ---
+
+            btn_style_sheet = "QPushButton { background-color: transparent; color: white; border: 2px solid white; border-radius: 4px; font-size: 10px; font-weight: bold; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); } QPushButton:disabled { color: #555; border-color: #555; }"
+            
+            btn_modifier_communes = QPushButton("Modifier")
+            btn_modifier_communes.setFixedSize(90, 26)
+            btn_modifier_communes.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_modifier_communes.setStyleSheet(btn_style_sheet)
+            btn_modifier_communes.clicked.connect(self.on_modifier_metadata_communes)
+            btn_modifier_communes.setEnabled(False)
+            self.btn_modifier_communes = btn_modifier_communes
+
+            btn_layout = QHBoxLayout()
+            btn_layout.addStretch()
+            btn_layout.addWidget(btn_modifier_communes)
+            btn_layout.setContentsMargins(0, 4, 0, 4)
+            content_layout.addLayout(btn_layout)
+
         else:
             self.meta_propres_scroll_layout = scroll_layout
             self.meta_propres_fields = {}
@@ -912,10 +927,15 @@ class TriKosmosView(QWidget):
             self.btn_modifier_propres.setEnabled(True)
         if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
             self.btn_precalculer_propres.setEnabled(True)
+        if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+            self.btn_modifier_communes.setEnabled(True)
         
         self.edit_propres = False
+        self.edit_communes = False
         if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
             self.btn_modifier_propres.setText("Modifier")
+        if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+            self.btn_modifier_communes.setText("Modifier")
         
         if self.controller:
             self.current_seek_info = self.controller.get_angle_seek_times(video.nom)
@@ -981,6 +1001,51 @@ class TriKosmosView(QWidget):
             self.edit_propres = False
             if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres: self.btn_modifier_propres.setText("Modifier")
             if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres: self.btn_precalculer_propres.setEnabled(True)
+        else:
+            QMessageBox.warning(self, "Erreur", message)
+    
+    def on_modifier_metadata_communes(self):
+        """Gère la modification des métadonnées communes"""
+        
+        if not (self.video_selectionnee and self.controller):
+            return
+
+        if not self.edit_communes:
+            # Activer l'édition
+            for w in self.meta_communes_fields.values():
+                w.setReadOnly(False)
+            self.edit_communes = True
+            if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+                self.btn_modifier_communes.setText("OK")
+            # Désactiver le bouton des métadonnées propres pendant l'édition
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+                self.btn_modifier_propres.setEnabled(False)
+            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
+                self.btn_precalculer_propres.setEnabled(False)
+            return
+
+        # Sauvegarder
+        nouvelles_meta = {}
+        for key, widget in self.meta_communes_fields.items():
+            nouvelles_meta[key] = widget.text()
+        
+        succes, message = self.controller.modifier_metadonnees_communes(self.video_selectionnee.nom, nouvelles_meta)
+
+        if succes:
+            self.controller.show_success_dialog(self)
+            
+            # Repasser en lecture seule
+            for w in self.meta_communes_fields.values():
+                w.setReadOnly(True)
+            self.edit_communes = False
+            if hasattr(self, "btn_modifier_communes") and self.btn_modifier_communes:
+                self.btn_modifier_communes.setText("Modifier")
+            
+            # Réactiver les boutons des métadonnées propres
+            if hasattr(self, "btn_modifier_propres") and self.btn_modifier_propres:
+                self.btn_modifier_propres.setEnabled(True)
+            if hasattr(self, "btn_precalculer_propres") and self.btn_precalculer_propres:
+                self.btn_precalculer_propres.setEnabled(True)
         else:
             QMessageBox.warning(self, "Erreur", message)
 
