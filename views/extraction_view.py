@@ -237,6 +237,10 @@ class ExtractionView(QWidget):
                 self.media_explorer.video_selected.connect(
                     self.controller.on_video_selected
                 )
+            if hasattr(self, 'media_explorer') and hasattr(self.media_explorer, 'view_mode_changed'):
+                self.media_explorer.view_mode_changed.connect(
+                    self.controller.on_view_mode_changed
+                )
             
             # ────────────────────────────────────────────────────────────
             # Signaux des OUTILS D'EXTRACTION
@@ -266,6 +270,14 @@ class ExtractionView(QWidget):
                 if hasattr(self.image_correction, 'color_correction_clicked'):
                     self.image_correction.color_correction_clicked.connect(
                         self.controller.on_color_correction
+                    )
+                if hasattr(self.image_correction, 'apply_clicked'):
+                    self.image_correction.apply_clicked.connect(
+                        self.controller.on_apply_corrections
+                    )
+                if hasattr(self.image_correction, 'undo_clicked'):
+                    self.image_correction.undo_clicked.connect(
+                        self.controller.on_undo_correction
                     )
                 if hasattr(self.image_correction, 'contrast_changed'):
                     self.image_correction.contrast_changed.connect(
@@ -385,11 +397,54 @@ class ExtractionView(QWidget):
                 'brightness': self.image_correction.get_brightness() if hasattr(self.image_correction, 'get_brightness') else 0
             }
         return {'contrast': 0, 'brightness': 0}
-        
+
     def reset_corrections(self):
         """Réinitialise toutes les corrections d'image"""
         if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'reset_all'):
             self.image_correction.reset_all()
+
+    def set_correction_values(self, corrections: dict[str, int]):
+        """Positionne les sliders sur des valeurs données (utilisé pour annulation)"""
+        if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'set_corrections'):
+            self.image_correction.set_corrections(
+                contrast=corrections.get('contrast', 0),
+                brightness=corrections.get('brightness', 0)
+            )
+
+    def apply_corrections_to_preview(self, corrections: dict[str, int]):
+        """
+        Applique visuellement les corrections sur l'aperçu vidéo et l'histogramme.
+        Cela reste un effet de prévisualisation (pas de traitement vidéo en temps réel).
+        """
+        if hasattr(self, 'video_player') and hasattr(self.video_player, 'apply_corrections'):
+            self.video_player.apply_corrections(
+                contrast=corrections.get('contrast', 0),
+                brightness=corrections.get('brightness', 0)
+            )
+
+        if hasattr(self, 'histogram'):
+            payload = self._build_histogram_payload(corrections)
+            self.update_histogram(payload)
+
+    def _build_histogram_payload(self, corrections: dict[str, int]) -> dict:
+        """Génère des données d'histogramme simples à partir des corrections actuelles."""
+        contrast = corrections.get('contrast', 0)
+        brightness = corrections.get('brightness', 0)
+        factor = 1 + (contrast / 200.0)
+        shift = brightness * 0.8
+
+        def scaled(channel_bias: int) -> list[int]:
+            values = []
+            for x in range(256):
+                raw = (x + channel_bias) * factor + shift
+                values.append(max(0, min(255, int(raw))))
+            return values
+
+        red = scaled(20)
+        green = scaled(0)
+        blue = scaled(-20)
+        density = [int((r + g + b) / 3) for r, g, b in zip(red, green, blue)]
+        return {'data_r': red, 'data_g': green, 'data_b': blue, 'data_density': density}
 
 
 # ============================================================

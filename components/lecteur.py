@@ -392,6 +392,34 @@ class VideoPlayer(QWidget):
         """Supprime tous les marqueurs de la timeline"""
         self.timeline.clear_markers()
 
+    def apply_corrections(self, contrast: int = 0, brightness: int = 0):
+        """
+        Applique visuellement les corrections sur le cadre vidéo.
+
+        Le lecteur réel n'est pas branché ici, on simule donc l'effet via
+        un dégradé plus clair/sombre pour donner un retour immédiat.
+        """
+        factor = max(0.2, 1 + (contrast / 200.0))
+        shift = brightness * 1.5
+
+        def adjust(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+            r, g, b = rgb
+            r = max(0, min(255, int(r * factor + shift)))
+            g = max(0, min(255, int(g * factor + shift)))
+            b = max(0, min(255, int(b * factor + shift)))
+            return (r, g, b)
+
+        colors = [
+            adjust((74, 85, 104)),
+            adjust((102, 124, 153)),
+            adjust((139, 163, 199)),
+        ]
+        gradient = (
+            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f" stop:0 rgb{colors[0]}, stop:0.5 rgb{colors[1]}, stop:1 rgb{colors[2]});"
+        )
+        self.video_frame.setStyleSheet(f"QLabel {{{gradient} border: none;}}")
+
 
 # Exemple d'utilisation
 if __name__ == '__main__':

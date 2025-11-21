@@ -202,13 +202,13 @@ class WinLikeExplorer(QMainWindow):
         # Retourner le chemin actuellement affiché (priorité au volet droit)
         idx = self.table.rootIndex()
         if idx.isValid():
-            return self.file_model.filePath(idx)
+            return os.path.normpath(self.file_model.filePath(idx))
         # Sinon, prendre la sélection du volet gauche
         idx = self.tree.currentIndex()
         if idx.isValid():
-            return self.dir_model.filePath(idx)
+            return os.path.normpath(self.dir_model.filePath(idx))
         # Sinon, HOME
-        return QDir.homePath()
+        return os.path.normpath(QDir.homePath())
 
     # ====== Slots UI
     def on_path_entered(self):

@@ -66,12 +66,26 @@ class ExtractionController:
 
     def on_color_correction(self) -> None:
         self.model.record_action("color_correction")
+        self._push_corrections_to_view()
 
     def on_contrast_changed(self, value: int) -> None:
         self.model.update_corrections(contrast=value)
+        self._push_corrections_to_view()
 
     def on_brightness_changed(self, value: int) -> None:
         self.model.update_corrections(brightness=value)
+        self._push_corrections_to_view()
+
+    def on_apply_corrections(self) -> None:
+        """Applique explicitement les corrections sur l'aperçu."""
+        self._push_corrections_to_view()
+
+    def on_undo_correction(self) -> None:
+        """Restaure la correction précédente et met la vue à jour."""
+        restored = self.model.undo_last_correction()
+        if hasattr(self.view, "set_correction_values"):
+            self.view.set_correction_values(restored)
+        self._push_corrections_to_view()
 
     def on_play_pause(self) -> None:
         self.model.record_action("play_pause")
@@ -99,6 +113,10 @@ class ExtractionController:
         self.model.set_playback_position(new_position)
         self._sync_player_position()
 
+    def on_view_mode_changed(self, mode: str) -> None:
+        """Enregistre les changements d'affichage de l'explorateur."""
+        self.model.record_action(f"view_mode:{mode}")
+
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
@@ -116,6 +134,12 @@ class ExtractionController:
             self.view.video_player, "set_position"
         ):
             self.view.video_player.set_position(self.model.get_playback_position())
+
+    def _push_corrections_to_view(self) -> None:
+        """Envoie les corrections courantes vers l'aperçu/histogramme."""
+        corrections = self.model.get_corrections()
+        if hasattr(self.view, "apply_corrections_to_preview"):
+            self.view.apply_corrections_to_preview(corrections)
 
     def _register_processing_action(self, action: str) -> None:
         self.model.record_action(action)

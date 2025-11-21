@@ -17,7 +17,7 @@ class HistogramWidget(QWidget):
         self.data_r = self.generate_sample_data()
         self.data_g = self.generate_sample_data()
         self.data_b = self.generate_sample_data()
-        self.data_mixed = self.generate_sample_data()
+        self.data_density = self._compute_density_from_channels()
         
     def generate_sample_data(self, points=256):
         """Génère des données d'exemple pour l'histogramme"""
@@ -30,7 +30,13 @@ class HistogramWidget(QWidget):
             data.append(value)
         return data
         
-    def update_data(self, data_r=None, data_g=None, data_b=None):
+    def _compute_density_from_channels(self):
+        """Moyenne simple des trois canaux pour afficher la densité."""
+        if not (self.data_r and self.data_g and self.data_b):
+            return self.generate_sample_data()
+        return [int((r + g + b) / 3) for r, g, b in zip(self.data_r, self.data_g, self.data_b)]
+
+    def update_data(self, data_r=None, data_g=None, data_b=None, data_density=None):
         """Met à jour les données de l'histogramme"""
         if data_r:
             self.data_r = data_r
@@ -38,6 +44,10 @@ class HistogramWidget(QWidget):
             self.data_g = data_g
         if data_b:
             self.data_b = data_b
+        if data_density:
+            self.data_density = data_density
+        else:
+            self.data_density = self._compute_density_from_channels()
         self.update()
         
     def paintEvent(self, event):
@@ -94,7 +104,7 @@ class HistogramWidget(QWidget):
                     painter.drawLine(points[i], points[i + 1])
         
         # Dessiner les courbes RGB avec mélange
-        draw_curve(self.data_mixed, "#FFFF00", 120)  # Jaune (mix)
+        draw_curve(self.data_density, "#FFFFFF", 180)  # Courbe blanche (densité)
         draw_curve(self.data_r, "#FF1744", 150)      # Rouge
         draw_curve(self.data_g, "#00E676", 150)      # Vert
         draw_curve(self.data_b, "#2979FF", 150)      # Bleu
@@ -171,16 +181,16 @@ class Histogram(QWidget):
             }
         """)
         
-    def update_histogram(self, data_r=None, data_g=None, data_b=None):
+    def update_histogram(self, data_r=None, data_g=None, data_b=None, data_density=None):
         """Met à jour les données de l'histogramme"""
-        self.histogram_widget.update_data(data_r, data_g, data_b)
+        self.histogram_widget.update_data(data_r, data_g, data_b, data_density)
         
     def refresh(self):
         """Rafraîchit l'histogramme avec de nouvelles données aléatoires"""
         self.histogram_widget.data_r = self.histogram_widget.generate_sample_data()
         self.histogram_widget.data_g = self.histogram_widget.generate_sample_data()
         self.histogram_widget.data_b = self.histogram_widget.generate_sample_data()
-        self.histogram_widget.data_mixed = self.histogram_widget.generate_sample_data()
+        self.histogram_widget.data_density = self.histogram_widget._compute_density_from_channels()
         self.histogram_widget.update()
 
 

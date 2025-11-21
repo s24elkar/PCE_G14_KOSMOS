@@ -35,6 +35,7 @@ class MediaModel:
         self._selected_index: Optional[int] = None
         self._playback_position: int = 0  # 0-1000 range (mirrors the timeline widget)
         self._corrections: dict[str, int] = {"contrast": 0, "brightness": 0}
+        self._corrections_history: list[dict[str, int]] = []
         self.action_log: List[str] = []
 
     # --------------------------------------------------------------------- #
@@ -130,12 +131,38 @@ class MediaModel:
     # Corrections tracking
     # --------------------------------------------------------------------- #
     def update_corrections(self, **kwargs: int) -> None:
+        previous_snapshot = dict(self._corrections)
+        changed = False
         for key, value in kwargs.items():
             if key in self._corrections:
-                self._corrections[key] = int(value)
+                int_value = int(value)
+                if self._corrections[key] != int_value:
+                    self._corrections[key] = int_value
+                    changed = True
+        if changed:
+            self._corrections_history.append(previous_snapshot)
+            # Keep history short to avoid unbounded growth in long sessions
+            if len(self._corrections_history) > 50:
+                self._corrections_history.pop(0)
 
     def get_corrections(self) -> dict[str, int]:
         return dict(self._corrections)
+
+    def reset_corrections(self) -> dict[str, int]:
+        """Reset contrast/brightness and keep history so undo stays consistent."""
+        self._corrections_history.append(dict(self._corrections))
+        self._corrections = {"contrast": 0, "brightness": 0}
+        return self.get_corrections()
+
+    def undo_last_correction(self) -> dict[str, int]:
+        """
+        Restore the previous correction snapshot if available.
+
+        Returns the restored corrections dict (or current values if history is empty).
+        """
+        if self._corrections_history:
+            self._corrections = self._corrections_history.pop()
+        return self.get_corrections()
 
     # --------------------------------------------------------------------- #
     # Action logging (used by the controller to record user actions)

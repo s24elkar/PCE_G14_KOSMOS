@@ -70,3 +70,21 @@ def test_controller_navigation_moves_selection(qapp, tmp_path):
     controller.on_previous_video()
     previous = model.get_selected_video()
     assert previous is not None and previous.name == first.name
+
+
+def test_controller_undo_restores_previous_corrections(qapp, tmp_path):
+    _create_media(tmp_path, ["clip.mp4"])
+
+    model = MediaModel()
+    view = ExtractionView()
+    controller = ExtractionController(view, model)
+    controller.load_directory(tmp_path)
+
+    controller.on_contrast_changed(30)
+    controller.on_brightness_changed(-10)
+    controller.on_contrast_changed(45)
+
+    controller.on_undo_correction()
+
+    assert model.get_corrections() == {"contrast": 30, "brightness": -10}
+    assert view.get_correction_values() == {"contrast": 30, "brightness": -10}

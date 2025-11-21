@@ -27,3 +27,22 @@ def test_media_explorer_clear_videos(qapp):
 
     assert len(explorer.thumbnails) == 0
     assert explorer.selected_thumbnail is None
+
+
+def test_media_explorer_toggle_view_mode(qapp):
+    explorer = MediaExplorer()
+    explorer.add_video("Vid1")
+    explorer.add_video("Vid2")
+
+    # Vue grille: deuxième élément doit être en colonne 1, ligne 0
+    assert explorer.content_layout.itemAtPosition(0, 1).widget() is explorer.thumbnails[1]
+
+    captured = []
+    explorer.view_mode_changed.connect(captured.append)
+
+    explorer.set_view_mode("list")
+
+    assert explorer.view_mode == "list"
+    assert explorer.content_layout.itemAtPosition(1, 0).widget() is explorer.thumbnails[1]
+    assert explorer.content_layout.itemAtPosition(0, 1) is None
+    assert captured == ["list"]

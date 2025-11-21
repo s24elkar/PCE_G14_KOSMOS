@@ -30,3 +30,12 @@ def test_histogram_refresh_generates_new_data(qapp):
     )
 
     assert any(a != b for a, b in zip(before, after))
+
+
+def test_histogram_accepts_density_curve(qapp):
+    histogram = Histogram()
+    density = [i % 200 for i in range(256)]
+
+    histogram.update_histogram(data_density=density)
+
+    assert histogram.histogram_widget.data_density == density

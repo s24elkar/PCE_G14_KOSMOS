@@ -93,11 +93,13 @@ class MediaExplorer(QWidget):
     """
     
     video_selected = pyqtSignal(str)  # Émet le nom de la vidéo sélectionnée
+    view_mode_changed = pyqtSignal(str)  # Émet "grid" ou "list"
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.thumbnails = []
         self.selected_thumbnail = None
+        self.view_mode = "grid"
         self.init_ui()
         
     def init_ui(self):
@@ -105,16 +107,44 @@ class MediaExplorer(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # En-tête
-        header = QLabel("Explorateur de media")
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("""
+        # En-tête avec bouton d'alternance d'affichage
+        header = QFrame()
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(10, 6, 10, 6)
+        header_layout.setSpacing(8)
+
+        title = QLabel("Explorateur de media")
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title.setStyleSheet("""
             QLabel {
-                background-color: white;
                 color: black;
                 font-size: 14px;
                 font-weight: bold;
-                padding: 10px;
+            }
+        """)
+        header_layout.addWidget(title, stretch=1)
+
+        self.view_toggle = QPushButton("Afficher en liste")
+        self.view_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.view_toggle.setFixedHeight(32)
+        self.view_toggle.setStyleSheet("""
+            QPushButton {
+                background-color: #0f7a4d;
+                color: white;
+                border: 2px solid #0f7a4d;
+                border-radius: 12px;
+                padding: 6px 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #12975e; border-color: #12975e; }
+        """)
+        self.view_toggle.clicked.connect(self.toggle_view_mode)
+        header_layout.addWidget(self.view_toggle, alignment=Qt.AlignmentFlag.AlignRight)
+
+        header.setLayout(header_layout)
+        header.setStyleSheet("""
+            QFrame {
+                background-color: white;
                 border-bottom: 2px solid #ddd;
             }
         """)
@@ -183,12 +213,7 @@ class MediaExplorer(QWidget):
         thumbnail.clicked.connect(self.on_thumbnail_clicked)
         self.thumbnails.append(thumbnail)
         
-        # Calculer la position dans la grille (2 colonnes)
-        index = len(self.thumbnails) - 1
-        row = index // 2  # Ligne (division entière)
-        col = index % 2   # Colonne (0 ou 1)
-        
-        self.content_layout.addWidget(thumbnail, row, col)
+        self._place_thumbnail(len(self.thumbnails) - 1)
         
     def on_thumbnail_clicked(self, video_name):
         """Gère le clic sur une miniature"""
@@ -207,11 +232,58 @@ class MediaExplorer(QWidget):
         
     def clear_videos(self):
         """Supprime toutes les vidéos"""
-        for thumb in self.thumbnails:
-            self.content_layout.removeWidget(thumb)
-            thumb.deleteLater()
+        self._clear_layout_items(delete_widgets=True)
         self.thumbnails.clear()
         self.selected_thumbnail = None
+
+    # ------------------------------------------------------------------ #
+    # View mode handling
+    # ------------------------------------------------------------------ #
+    def toggle_view_mode(self):
+        next_mode = "list" if self.view_mode == "grid" else "grid"
+        self.set_view_mode(next_mode)
+
+    def set_view_mode(self, mode: str):
+        """Basculer entre affichage grille (2 colonnes) et liste (1 colonne)."""
+        if mode not in {"grid", "list"}:
+            return
+        if mode == self.view_mode and self.thumbnails:
+            return
+        self.view_mode = mode
+        self._update_toggle_label()
+        self._reflow_thumbnails()
+        self.view_mode_changed.emit(self.view_mode)
+
+    def _update_toggle_label(self):
+        if self.view_mode == "grid":
+            self.view_toggle.setText("Afficher en liste")
+        else:
+            self.view_toggle.setText("Afficher en grille")
+
+    def _reflow_thumbnails(self):
+        """Réorganise les miniatures selon le mode courant."""
+        self._clear_layout_items(delete_widgets=False)
+        for index in range(len(self.thumbnails)):
+            self._place_thumbnail(index)
+
+    def _place_thumbnail(self, index: int):
+        """Place une miniature dans la grille selon le mode courant."""
+        if index < 0 or index >= len(self.thumbnails):
+            return
+        columns = 1 if self.view_mode == "list" else 2
+        row = index // columns
+        col = index % columns
+        self.content_layout.addWidget(self.thumbnails[index], row, col)
+
+    def _clear_layout_items(self, delete_widgets: bool):
+        """Retire les widgets du layout sans forcément les détruire."""
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(self.content_widget)
+                if delete_widgets:
+                    widget.deleteLater()
 
 
 # Exemple d'utilisation

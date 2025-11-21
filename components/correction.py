@@ -125,6 +125,8 @@ class ImageCorrection(QWidget):
     color_correction_clicked = pyqtSignal()
     contrast_changed = pyqtSignal(int)
     brightness_changed = pyqtSignal(int)
+    apply_clicked = pyqtSignal()
+    undo_clicked = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -161,6 +163,44 @@ class ImageCorrection(QWidget):
         self.color_btn = ColorCorrectionButton()
         self.color_btn.clicked.connect(self.color_correction_clicked.emit)
         controls_layout.addWidget(self.color_btn)
+
+        # Boutons d'action pour appliquer ou annuler les corrections
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(10)
+
+        self.apply_btn = QPushButton("Appliquer à l'aperçu")
+        self.apply_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.apply_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: white;
+                border: 2px solid #4CAF50;
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #3a3a3a; }
+        """)
+        self.apply_btn.clicked.connect(self.apply_clicked.emit)
+        actions_layout.addWidget(self.apply_btn)
+
+        self.undo_btn = QPushButton("Annuler la correction")
+        self.undo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.undo_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: white;
+                border: 2px solid #E53935;
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #3a3a3a; }
+        """)
+        self.undo_btn.clicked.connect(self.undo_clicked.emit)
+        actions_layout.addWidget(self.undo_btn)
+
+        controls_layout.addLayout(actions_layout)
         
         # Slider Contraste
         self.contrast_slider = LabeledSlider("Contraste", -100, 100, 0)
@@ -192,6 +232,15 @@ class ImageCorrection(QWidget):
         """Réinitialise tous les contrôles"""
         self.contrast_slider.reset()
         self.brightness_slider.reset()
+
+    def set_corrections(self, contrast: int, brightness: int):
+        """Met à jour les sliders sans émettre les signaux utilisateur"""
+        contrast_blocker = QSignalBlocker(self.contrast_slider.slider)
+        brightness_blocker = QSignalBlocker(self.brightness_slider.slider)
+        self.contrast_slider.set_value(int(contrast))
+        self.brightness_slider.set_value(int(brightness))
+        del contrast_blocker
+        del brightness_blocker
         
     def get_contrast(self):
         """Retourne la valeur du contraste"""
