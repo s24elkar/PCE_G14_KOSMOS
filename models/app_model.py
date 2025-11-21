@@ -135,17 +135,22 @@ class Campagne:
     def sauvegarder(self) -> bool:
         """Sauvegarde la campagne dans un fichier JSON"""
         try:
+            # Si emplacement est vide, utiliser le dossier d'import
+            if not self.emplacement and hasattr(self, 'dossier_import'):
+                self.emplacement = self.dossier_import
+            
             Path(self.emplacement).mkdir(parents=True, exist_ok=True)
             fichier_config = os.path.join(self.emplacement, f"{self.nom}_config.json")
             
             with open(fichier_config, 'w', encoding='utf-8') as f:
                 json.dump(self.to_dict(), f, indent=4, ensure_ascii=False)
             
+            print(f"💾 Configuration sauvegardée : {fichier_config}")
             return True
         except Exception as e:
             print(f"❌ Erreur lors de la sauvegarde : {e}")
             return False
-    
+        
     @staticmethod
     def charger(chemin_fichier: str) -> Optional['Campagne']:
         """Charge une campagne depuis un fichier JSON"""
@@ -206,6 +211,11 @@ class ApplicationModel:
         Importe les vidéos depuis la structure KOSMOS
         """
         self.dossier_videos_import = dossier_principal
+    
+        # Mettre à jour l'emplacement de la campagne avec le dossier d'import
+        if self.campagne_courante:
+            self.campagne_courante.emplacement = dossier_principal
+            self.campagne_courante.dossier_import = dossier_principal
         
         resultats = {
             'videos_importees': [],

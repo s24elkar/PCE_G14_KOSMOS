@@ -27,25 +27,24 @@ from controllers.accueil_controller import AccueilKosmosController
 class FenetreNouvelleCampagne(QDialog):
     """Dialogue pour créer une nouvelle campagne"""
     
-    campagneCreee = pyqtSignal(str, str)  # signal : nom, chemin
+    campagneCreee = pyqtSignal(str, str)  # signal : nom, emplacement (vide)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Nouvelle étude campagne")
-        self.setFixedSize(700, 300)
+        self.setWindowTitle("Nouveau répertoire de travail")
+        self.setFixedSize(500, 200)  # Taille réduite
         self.setStyleSheet("background-color: black;")
 
-        # Layout principal
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 30, 40, 30)
         layout.setSpacing(20)
         
         # Titre
-        titre = QLabel("Nouvelle étude campagne")
+        titre = QLabel("Nouveau répertoire de travail")
         titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
         titre.setStyleSheet("""
             QLabel {
-                color: #E91E63;
+                color: #1DA1FF;
                 font-size: 20px;
                 font-weight: bold;
                 padding: 15px;
@@ -55,9 +54,9 @@ class FenetreNouvelleCampagne(QDialog):
         """)
         layout.addWidget(titre)
 
-        # Ligne : Nom
+        # Ligne : Nom uniquement
         nom_layout = QHBoxLayout()
-        nom_label = QLabel("Nom :")
+        nom_label = QLabel("Nom du répertoire :")
         nom_label.setFixedWidth(150)
         nom_label.setStyleSheet("QLabel { color: white; font-size: 14px; font-weight: bold; }")
         self.nom_edit = QLineEdit()
@@ -77,43 +76,10 @@ class FenetreNouvelleCampagne(QDialog):
         nom_layout.addWidget(nom_label)
         nom_layout.addWidget(self.nom_edit)
 
-        # Ligne : Emplacement
-        emp_layout = QHBoxLayout()
-        emp_label = QLabel("Emplacement :")
-        emp_label.setFixedWidth(150)
-        emp_label.setStyleSheet("QLabel { color: white; font-size: 14px; font-weight: bold; }")
-        self.emp_edit = QLineEdit()
-        self.emp_edit.setStyleSheet("""
-            QLineEdit {
-                background-color: white;
-                color: black;
-                border: 2px solid white;
-                border-radius: 5px;
-                padding: 8px;
-                font-size: 14px;
-            }
-        """)
-        self.emp_browse = QPushButton("Parcourir")
-        self.emp_browse.setFixedWidth(120)
-        self.emp_browse.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.emp_browse.setStyleSheet("""
-            QPushButton {
-                background-color: white;
-                color: black;
-                border: 2px solid white;
-                border-radius: 5px;
-                padding: 8px;
-                font-size: 13px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        """)
-        self.emp_browse.clicked.connect(self.parcourir_emplacement)
-        emp_layout.addWidget(emp_label)
-        emp_layout.addWidget(self.emp_edit)
-        emp_layout.addWidget(self.emp_browse)
+        # Message informatif
+        info_label = QLabel("Le répertoire sera créé dans le dossier d'importation des vidéos")
+        info_label.setStyleSheet("QLabel { color: #888; font-size: 11px; font-style: italic; }")
+        info_label.setWordWrap(True)
 
         # Boutons OK / Annuler
         buttons_layout = QHBoxLayout()
@@ -160,27 +126,20 @@ class FenetreNouvelleCampagne(QDialog):
 
         # Ajout au layout principal
         layout.addLayout(nom_layout)
-        layout.addLayout(emp_layout)
+        layout.addWidget(info_label)
         layout.addStretch()
         layout.addLayout(buttons_layout)
-
-    def parcourir_emplacement(self):
-        """Parcourir l'emplacement"""
-        chemin = QFileDialog.getExistingDirectory(self, "Choisir un emplacement")
-        if chemin:
-            self.emp_edit.setText(chemin)
 
     def valider(self):
         """Validation"""
         nom = self.nom_edit.text().strip()
-        chemin = self.emp_edit.text().strip()
 
-        if not nom or not chemin:
-            QMessageBox.warning(self, "Champs manquants", "Veuillez renseigner tous les champs.")
+        if not nom:
+            QMessageBox.warning(self, "Champ manquant", "Veuillez renseigner le nom du répertoire.")
             return
 
-        # Émission du signal
-        self.campagneCreee.emit(nom, chemin)
+        # Émission du signal avec emplacement vide
+        self.campagneCreee.emit(nom, "")
         self.accept()
 
 
@@ -345,11 +304,11 @@ class NavBarAvecMenu(QWidget):
             }
         """)
         
-        action_creer = QAction("Créer campagne", self)
+        action_creer = QAction("Créer un repertoire de travail", self)
         action_creer.triggered.connect(self.nouvelle_campagne_clicked.emit)
         self.fichier_menu.addAction(action_creer)
         
-        action_ouvrir = QAction("Ouvrir campagne", self)
+        action_ouvrir = QAction("Ouvrir un repertoire de travail", self)
         action_ouvrir.triggered.connect(self.ouvrir_campagne_clicked.emit)
         self.fichier_menu.addAction(action_ouvrir)
         

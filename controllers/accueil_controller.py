@@ -29,14 +29,15 @@ class AccueilKosmosController(QObject):
         dialogue = FenetreNouvelleCampagne(view_parent)
         
         def on_campagne_creee(nom, emplacement):
-            campagne = self.model.creer_campagne(nom, emplacement)
-            self.model.sauvegarder_campagne()
+            # Créer la campagne SANS sauvegarder immédiatement
+            # L'emplacement sera défini lors de l'importation
+            campagne = self.model.creer_campagne(nom, "")  # Emplacement vide pour l'instant
             
             print(f"✅ Campagne créée : {campagne.nom}")
             
             self.campagne_creee.emit(nom, emplacement)
             self.navigation_demandee.emit('importation')
-        
+    
         dialogue.campagneCreee.connect(on_campagne_creee)
         dialogue.exec()
     
