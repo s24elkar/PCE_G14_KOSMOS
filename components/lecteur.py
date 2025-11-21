@@ -4,8 +4,10 @@ Lecteur avec timeline, contrôles et affichage des métadonnées
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QSlider, QFrame)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect
-from PyQt6.QtGui import QColor, QPalette, QPainter, QPen
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect, QUrl, QSize, QRectF
+from PyQt6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoFrame
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 
 class MetadataOverlay(QWidget):
@@ -273,11 +275,15 @@ class VideoPlayer(QWidget):
     # Signaux
     play_pause_clicked = pyqtSignal()
     position_changed = pyqtSignal(int)
+    frame_captured = pyqtSignal(QPixmap) # Signal pour l'image capturée
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.duration = 0
+        self.media_player = None  # Sera initialisé plus tard
+        self._player_initialized = False
         self.init_ui()
-        
+
     def init_ui(self):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -295,19 +301,12 @@ class VideoPlayer(QWidget):
         video_layout = QVBoxLayout()
         video_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Frame vidéo (placeholder avec dégradé)
-        self.video_frame = QLabel()
-        self.video_frame.setStyleSheet("""
-            QLabel {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #4a5568, stop:0.5 #667c99, stop:1 #8ba3c7);
-                border: none;
-            }
-        """)
-        self.video_frame.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Widget vidéo réel
+        self.video_widget = QVideoWidget()
+        self.video_widget.setStyleSheet("background-color: black;")
         
-        # Overlay de métadonnées
-        self.metadata_overlay = MetadataOverlay(self.video_frame)
+        # Overlay de métadonnées (parenté au video_widget pour superposition)
+        self.metadata_overlay = MetadataOverlay(self.video_widget)
         
         # Bouton plein écran en bas à droite
         self.fullscreen_btn = QPushButton("⛶")
@@ -326,9 +325,9 @@ class VideoPlayer(QWidget):
                 border-color: rgba(255, 255, 255, 150);
             }
         """)
-        self.fullscreen_btn.setParent(self.video_frame)
+        self.fullscreen_btn.setParent(self.video_widget)
         
-        video_layout.addWidget(self.video_frame)
+        video_layout.addWidget(self.video_widget)
         video_container.setLayout(video_layout)
         
         main_layout.addWidget(video_container)
@@ -340,7 +339,8 @@ class VideoPlayer(QWidget):
         timeline_layout.setSpacing(0)
         
         self.timeline = VideoTimeline()
-        self.timeline.position_changed.connect(self.position_changed.emit)
+        # Connexion du signal de la timeline (utilisateur déplace le curseur)
+        self.timeline.position_changed.connect(self.on_timeline_moved)
         timeline_layout.addWidget(self.timeline)
         
         timeline_container.setLayout(timeline_layout)
@@ -349,7 +349,11 @@ class VideoPlayer(QWidget):
         
         # Contrôles
         self.controls = VideoControls()
-        self.controls.play_pause_clicked.connect(self.play_pause_clicked.emit)
+        # Connexion des contrôles
+        self.controls.play_pause_clicked.connect(self.toggle_play_pause)
+        self.controls.rewind_clicked.connect(self.seek_backward)
+        self.controls.forward_clicked.connect(self.seek_forward)
+        
         main_layout.addWidget(self.controls)
         
         self.setLayout(main_layout)
@@ -360,29 +364,142 @@ class VideoPlayer(QWidget):
                 border: 3px solid black;
             }
         """)
+
+    def showEvent(self, event):
+        """Appelé lorsque le widget est sur le point d'être affiché."""
+        super().showEvent(event)
+        if not self._player_initialized:
+            self.setup_player()
+
+    def setup_player(self):
+        """Initialise le lecteur multimédia"""
+        if self._player_initialized:
+            return
+            
+        self.media_player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+
+        self.media_player.setAudioOutput(self.audio_output)
+        self.media_player.setVideoOutput(self.video_widget)
+
+        # Connexion des signaux du lecteur
+        self.media_player.positionChanged.connect(self.on_position_changed)
+        self.media_player.durationChanged.connect(self.on_duration_changed)
+        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+        self._player_initialized = True
+
+    def load_video(self, file_path):
+        """Charge une vidéo depuis un fichier"""
+        # Sécurité : si le lecteur n'est pas encore initialisé (parce que le widget
+        # n'a pas encore été montré), on force son initialisation.
+        if not self._player_initialized:
+            self.setup_player()
+            
+        url = QUrl.fromLocalFile(file_path)
+        self.media_player.setSource(url)
+        self.media_player.pause() # Charger sans démarrer automatiquement
+        self.controls.is_playing = False
+        self.controls.play_pause_btn.setText("▶")
+
+    def toggle_play_pause(self):
+        """Bascule entre lecture et pause"""
+        # Note: VideoControls a déjà basculé son état interne et le texte du bouton
+        # Nous devons juste synchroniser le lecteur
+        if not self._player_initialized:
+            return
+
+        if self.controls.is_playing:
+            self.media_player.play()
+        else:
+            self.media_player.pause()
         
+        # Émettre le signal pour le contrôleur (si besoin d'actions supplémentaires)
+        self.play_pause_clicked.emit()
+
+    def grab_frame(self) -> None:
+        """
+        Capture l'image actuelle affichée dans le QVideoWidget.
+        Émet un signal `frame_captured` avec le QPixmap.
+        """
+        if not self._player_initialized:
+            return
+
+        if not self.video_widget.isVisible() or self.video_widget.size().isEmpty():
+            return
+
+        was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if was_playing:
+            self.media_player.pause()
+
+        QTimer.singleShot(150, lambda: self._capture_and_resume(was_playing))
+
+    def _capture_and_resume(self, resume_playing):
+        """Capture l'image et la transmet via un signal."""
+        video_frame = self.media_player.videoSink().videoFrame()
+        if video_frame.isValid():
+            image = video_frame.toImage()
+            pixmap = QPixmap.fromImage(image)
+            self.frame_captured.emit(pixmap)
+
+        if resume_playing:
+            self.media_player.play()
+
+    def on_position_changed(self, position):
+        """Appelé quand la position de lecture change (ms)"""
+        if not self._player_initialized:
+            return
+
+        # Mettre à jour la timeline sans déclencher le signal de changement
+        if self.duration > 0:
+            slider_pos = int((position / self.duration) * 1000)
+            self.timeline.slider.blockSignals(True)
+            self.timeline.set_position(slider_pos)
+            self.timeline.slider.blockSignals(False)
+            
+        # Émettre le signal pour le contrôleur
+        self.position_changed.emit(position)
+
+    def on_duration_changed(self, duration):
+        """Appelé quand la durée de la vidéo change (ms)"""
+        self.duration = duration
+
+    def on_timeline_moved(self, value):
+        """Appelé quand l'utilisateur bouge la timeline (0-1000)"""
+        if not self._player_initialized:
+            return
+
+        if self.duration > 0:
+            position = int((value / 1000) * self.duration)
+            self.media_player.setPosition(position)
+
+    def seek_backward(self):
+        """Recule de 10 secondes"""
+        if not self._player_initialized:
+            return
+
+        self.media_player.setPosition(max(0, self.media_player.position() - 10000))
+
+    def seek_forward(self):
+        """Avance de 10 secondes"""
+        if not self._player_initialized:
+            return
+
+        self.media_player.setPosition(min(self.duration, self.media_player.position() + 10000))
+
     def resizeEvent(self, event):
         """Redimensionne l'overlay et le bouton plein écran quand le widget change de taille"""
         super().resizeEvent(event)
         if hasattr(self, 'metadata_overlay'):
-            self.metadata_overlay.setGeometry(0, 0, self.video_frame.width(), self.video_frame.height())
+            self.metadata_overlay.setGeometry(0, 0, self.video_widget.width(), self.video_widget.height())
         if hasattr(self, 'fullscreen_btn'):
             # Positionner le bouton en bas à droite
-            btn_x = self.video_frame.width() - self.fullscreen_btn.width() - 10
-            btn_y = self.video_frame.height() - self.fullscreen_btn.height() - 10
+            btn_x = self.video_widget.width() - self.fullscreen_btn.width() - 10
+            btn_y = self.video_widget.height() - self.fullscreen_btn.height() - 10
             self.fullscreen_btn.move(btn_x, btn_y)
             
     def update_metadata(self, **kwargs):
         """Met à jour les métadonnées affichées"""
         self.metadata_overlay.update_metadata(**kwargs)
-        
-    def set_position(self, position):
-        """Définit la position de lecture (0-1000)"""
-        self.timeline.set_position(position)
-        
-    def get_position(self):
-        """Retourne la position actuelle (0-1000)"""
-        return self.timeline.get_position()
         
     def add_timeline_marker(self, position):
         """Ajoute un marqueur rouge sur la timeline (0-100)"""
@@ -391,6 +508,15 @@ class VideoPlayer(QWidget):
     def clear_timeline_markers(self):
         """Supprime tous les marqueurs de la timeline"""
         self.timeline.clear_markers()
+    
+    def on_media_status_changed(self, status):
+        """Gère les changements d'état du média"""
+        if not self._player_initialized:
+            return
+
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.controls.is_playing = False
+            self.controls.play_pause_btn.setText("▶")
 
 
 # Exemple d'utilisation

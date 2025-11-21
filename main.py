@@ -105,6 +105,9 @@ class KosmosApplication(QMainWindow):
         self.extraction_view = ExtractionView(self.extraction_controller)
         # Important : Lier la vue au contrôleur
         self.extraction_controller.set_view(self.extraction_view)
+        # --- NOUVELLE CONNEXION ---
+        # Charger les données uniquement lorsque la vue est réellement affichée
+        self.extraction_view.view_shown.connect(self.extraction_controller.load_initial_data)
         self.stack.addWidget(self.extraction_view)
         
         # Afficher la page d'accueil par défaut
@@ -169,8 +172,7 @@ class KosmosApplication(QMainWindow):
         # --- C'EST ICI QUE ÇA BLOQUAIT AVANT ---      
         elif nom_page == "extraction":
             if self.extraction_view:
-                self.extraction_controller.load_initial_data()
-                self.stack.setCurrentWidget(self.extraction_view)
+                self.stack.setCurrentWidget(self.extraction_view) # On se contente d'afficher la vue
             else:
                 print("❌ Page d'extraction non disponible")
         # ---------------------------------------

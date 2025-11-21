@@ -10,7 +10,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 # Import de vos composants depuis components/
 from components.navbar import NavBar
@@ -28,12 +28,22 @@ class ExtractionView(QWidget):
     - Col 1: Explorateur (haut) + Outils (bas)
     - Col 2-3: Lecteur (haut) + Correction (bas col 2) + Histogramme (bas col 3)
     """
+    # Signal émis lorsque la vue est affichée pour la première fois
+    view_shown = pyqtSignal()
     
     def __init__(self, controller=None, parent=None):
         super().__init__(parent)
         self.controller = controller
+        self._is_first_show = True
         self.init_ui()
-        self.load_initial_data()
+        
+    def showEvent(self, event):
+        """Surcharge de l'événement d'affichage."""
+        super().showEvent(event)
+        # Émettre le signal uniquement la première fois que la vue est montrée
+        if self._is_first_show:
+            self.view_shown.emit()
+            self._is_first_show = False
         
     def init_ui(self):
         """Initialise l'interface utilisateur"""
@@ -310,13 +320,6 @@ class ExtractionView(QWidget):
         except Exception as e:
             print(f"⚠️ Erreur lors de la connexion des signaux: {e}")
         
-    def load_initial_data(self):
-        """
-        Charge les données initiales depuis le modèle via le contrôleur
-        """
-        if self.controller and hasattr(self.controller, 'load_initial_data'):
-            self.controller.load_initial_data()
-            
     def update_video_list(self, videos):
         """
         Met à jour la liste des vidéos dans l'explorateur

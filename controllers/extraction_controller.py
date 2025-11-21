@@ -3,9 +3,12 @@ CONTRÔLEUR - Page d'extraction KOSMOS
 Architecture MVC
 Gère la logique de la page d'extraction (lecture, navigation, outils)
 """
+import datetime
+import json
 import sys
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QInputDialog
 
 # Ajout du chemin racine pour les imports
 project_root = Path(__file__).parent.parent
@@ -28,10 +31,15 @@ class ExtractionKosmosController(QObject):
         # État local pour les corrections
         self.brightness = 0
         self.contrast = 0
-
+        self.pending_capture_name = None # Pour stocker le nom de la capture
+        
     def set_view(self, view):
         """Associe la vue à ce contrôleur"""
         self.view = view
+        # C'est le bon endroit pour connecter les signaux de la vue,
+        # car nous sommes sûrs que self.view est défini.
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.frame_captured.connect(self.save_captured_frame)
 
     def load_initial_data(self):
         """
@@ -90,23 +98,76 @@ class ExtractionKosmosController(QObject):
         else:
             print(f"❌ Erreur: Vidéo '{video_name}' non trouvée dans le modèle.")
 
+    def _charger_metadonnees_propres_json(self, video):
+        """Charge les métadonnées propres (section 'video') depuis le JSON."""
+        try:
+            json_path = Path(video.chemin).parent / f"{video.dossier_numero}.json"
+            if not json_path.exists():
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            video.metadata_propres.clear()
+            
+            def flatten_dict(section_data, prefix=''):
+                for key, value in section_data.items():
+                    if isinstance(value, dict):
+                        flatten_dict(value, prefix=f"{prefix}{key}_")
+                    else:
+                        full_key = f"{prefix}{key}"
+                        video.metadata_propres[full_key] = str(value) if value is not None else ""
+
+            if 'video' in data:
+                flatten_dict(data['video'])
+            return True
+        except Exception as e:
+            print(f"❌ Erreur lecture JSON propres (extraction): {e}")
+            return False
+
+    def _charger_metadonnees_communes_json(self, video):
+        """Charge les métadonnées communes ('system', 'campaign') depuis le JSON."""
+        try:
+            json_path = Path(video.chemin).parent / f"{video.dossier_numero}.json"
+            if not json_path.exists(): return False
+
+            with open(json_path, 'r', encoding='utf-8') as f: data = json.load(f)
+            video.metadata_communes.clear()
+
+            def flatten_dict(d, p=''):
+                for k, v in d.items():
+                    if isinstance(v, dict): flatten_dict(v, f"{p}{k}_")
+                    else: video.metadata_communes[f"{p}{k}"] = str(v) if v is not None else ""
+            
+            if 'system' in data: flatten_dict(data['system'], "system_")
+            if 'campaign' in data: flatten_dict(data['campaign'], "campaign_")
+            return True
+        except Exception as e:
+            print(f"❌ Erreur lecture JSON communes (extraction): {e}")
+            return False
+
     def charger_video_dans_lecteur(self, video):
         """Prépare les données de la vidéo et met à jour le lecteur de la vue"""
         if not self.view:
             return
+
+        # --- AJOUT IMPORTANT : Recharger les métadonnées depuis le JSON ---
+        self._charger_metadonnees_propres_json(video)
+        self._charger_metadonnees_communes_json(video)
+        # --- FIN AJOUT ---
 
         # Préparer les métadonnées pour l'affichage dans le lecteur (overlay)
         # MODIFICATION : On mappe uniquement les champs acceptés par MetadataOverlay.update_metadata
         # Arguments acceptés : time, temp, salinity, depth, pression
         
         # Récupération sécurisée des valeurs (avec valeur par défaut '-')
-        t_eau = video.metadata_propres.get('ctdDict_temperature', '-')
+        t_eau = video.metadata_propres.get('ctdDict_temperature', '-') # AJOUT DU _
         if t_eau != '-': t_eau = f"{t_eau}°C"
         
-        depth = video.metadata_propres.get('ctdDict_depth', '-')
+        depth = video.metadata_propres.get('ctdDict_depth', '-') # AJOUT DU _
         if depth != '-': depth = f"{depth} m"
         
-        salinity = video.metadata_propres.get('ctdDict_salinity', '-')
+        salinity = video.metadata_propres.get('ctdDict_salinity', '-') # AJOUT DU _
         
         metadata_display = {
             "time": video.start_time_str,
@@ -203,11 +264,58 @@ class ExtractionKosmosController(QObject):
     # ═══════════════════════════════════════════════════════════════
 
     def on_screenshot(self):
-        """Prend une capture d'écran de la vidéo à l'instant T"""
-        if self.model.video_selectionnee:
-            print(f"📸 Capture d'écran pour {self.model.video_selectionnee.nom}")
-            self.view.show_message("Capture d'écran enregistrée", "success")
+        """Demande un nom pour la capture, puis demande au lecteur de la prendre."""
+        if not self.model.video_selectionnee:
+            self.view.show_message("Aucune vidéo sélectionnée.", "warning")
+            return
 
+        # 1. Boîte de dialogue pour saisir le nom de la capture
+        capture_name, ok_pressed = QInputDialog.getText(
+            self.view,
+            "Nommer la capture",
+            "Entrez le nom de la capture (sans extension) :",
+        )
+
+        # 2. Si l'utilisateur a validé et entré un nom
+        if ok_pressed and capture_name:
+            self.pending_capture_name = capture_name
+            # 3. Demande au lecteur de capturer l'image. La sauvegarde suivra.
+            self.view.video_player.grab_frame()
+        else:
+            print("❌ Capture annulée ou nom vide.")
+
+    def save_captured_frame(self, frame: 'QPixmap'):
+        if not frame or not self.pending_capture_name:
+            self.view.show_message("Impossible de capturer l'image de la vidéo.", "error")
+            return
+
+        # 2. Définir le chemin de sauvegarde
+        save_dir = Path(self.model.campagne_courante.emplacement)
+        
+        if not save_dir:
+            self.view.show_message("Emplacement de la campagne non défini.", "error")
+            return
+
+        # Créer un sous-dossier "captures" pour une meilleure organisation
+        captures_dir = save_dir / "captures"
+        captures_dir.mkdir(exist_ok=True)
+
+        # 3. Utiliser le nom fourni par l'utilisateur
+        filename = f"{self.pending_capture_name}.jpg"
+        save_path = captures_dir / filename
+
+        # 4. Sauvegarder l'image
+        try:
+            frame.save(str(save_path), "jpg", 95)
+            self.view.show_message(f"Capture enregistrée : {filename}", "success")
+            print(f"📸 Capture d'écran enregistrée sous : {save_path}")
+        except Exception as e:
+            self.view.show_message(f"Erreur lors de la sauvegarde : {e}", "error")
+            print(f"❌ Erreur sauvegarde capture : {e}")
+        finally:
+            # Réinitialiser le nom pour la prochaine capture
+            self.pending_capture_name = None
+            
     def on_recording(self):
         """Démarre/Arrête l'enregistrement d'un extrait"""
         print("🔴 Enregistrement d'extrait activé/désactivé")
