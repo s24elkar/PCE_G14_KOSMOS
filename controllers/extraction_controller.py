@@ -40,6 +40,9 @@ class ExtractionKosmosController(QObject):
         # car nous sommes sûrs que self.view est défini.
         if self.view and hasattr(self.view, 'video_player'):
             self.view.video_player.frame_captured.connect(self.save_captured_frame)
+        # Afficher la première vidéo conservée au lancement de la page Extraction
+        if self.view and hasattr(self.view, 'view_shown'):
+            self.view.view_shown.connect(self.load_first_video)
 
     def load_initial_data(self):
         """
@@ -55,10 +58,12 @@ class ExtractionKosmosController(QObject):
         # Formater pour la vue (l'explorateur attend une liste de dicts)
         videos_data = []
         for vid in videos:
-            # On peut définir une couleur différente si la vidéo est traitée ou non
+            # Générer la miniature de la vidéo
+            thumbnail_pixmap = self._generer_miniature_video(vid.chemin)
             color = "#00CBA9" if vid.est_conservee else "#FF6B6B"
             videos_data.append({
                 'name': vid.nom,
+                'thumbnail_pixmap': thumbnail_pixmap,
                 'thumbnail_color': color
             })
             
@@ -386,3 +391,33 @@ class ExtractionKosmosController(QObject):
     def on_crop(self):
         """Active l'outil de recadrage"""
         print("✂️ Outil de recadrage activé")
+
+    def _generer_miniature_video(self, chemin_video):
+        """
+        Génère une miniature (QPixmap) à partir de la première frame d'une vidéo.
+        Args:
+            chemin_video: Chemin vers le fichier vidéo
+        Returns:
+            QPixmap ou None si échec
+        """
+        try:
+            import cv2
+            from PyQt6.QtGui import QImage, QPixmap
+            cap = cv2.VideoCapture(chemin_video)
+            if not cap.isOpened():
+                print(f"⚠️ Impossible d'ouvrir la vidéo : {chemin_video}")
+                return None
+            ret, frame = cap.read()
+            cap.release()
+            if not ret or frame is None:
+                print(f"⚠️ Impossible de lire la première frame : {chemin_video}")
+                return None
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = frame_rgb.shape
+            bytes_per_line = 3 * width
+            q_image = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            return pixmap
+        except Exception as e:
+            print(f"❌ Erreur génération miniature pour {chemin_video}: {e}")
+            return None

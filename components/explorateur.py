@@ -13,21 +13,39 @@ class MediaThumbnail(QWidget):
     
     clicked = pyqtSignal(str)  # Émet le nom de la vidéo
     
-    def __init__(self, video_name, thumbnail_color=None, parent=None):
+    def __init__(self, video_name, thumbnail_pixmap=None, thumbnail_color=None, parent=None):
         super().__init__(parent)
         self.video_name = video_name
         self.is_selected = False
+        self.thumbnail_pixmap = thumbnail_pixmap
         self.thumbnail_color = thumbnail_color or "#00CBA9"
         self.init_ui()
         
     def init_ui(self):
         layout = QVBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
         
-        # Zone de la miniature (placeholder coloré)
+        # Zone de la miniature (image ou placeholder coloré)
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(150, 100)
+        self.thumbnail_label.setFixedSize(120, 80)
+        
+        # Si on a une image, l'afficher, sinon utiliser la couleur
+        if self.thumbnail_pixmap:
+            # Redimensionner l'image en gardant le ratio et en remplissant le cadre
+            scaled_pixmap = self.thumbnail_pixmap.scaled(
+                120, 80,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            
+            # Couper le pixmap aux dimensions exactes (centré)
+            x_offset = (scaled_pixmap.width() - 120) // 2
+            y_offset = (scaled_pixmap.height() - 80) // 2
+            cropped_pixmap = scaled_pixmap.copy(x_offset, y_offset, 120, 80)
+            
+            self.thumbnail_label.setPixmap(cropped_pixmap)
+        
         self.thumbnail_label.setStyleSheet(f"""
             QLabel {{
                 background-color: {self.thumbnail_color};
@@ -40,11 +58,11 @@ class MediaThumbnail(QWidget):
         
         # Nom de la vidéo (CENTRÉ)
         name_label = QLabel(self.video_name)
-        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # ← Changé de AlignLeft à AlignCenter
+        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setStyleSheet("""
             QLabel {
                 color: white;
-                font-size: 12px;
+                font-size: 10px;
                 font-weight: 500;
             }
         """)
@@ -152,8 +170,9 @@ class MediaExplorer(QWidget):
         
         # CHANGEMENT: Utiliser QGridLayout au lieu de QVBoxLayout pour avoir 2 colonnes
         self.content_layout = QGridLayout()
-        self.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.content_layout.setSpacing(15)
+        self.content_layout.setContentsMargins(5, 15, 5, 15)  # marges haut/bas augmentées
+        self.content_layout.setHorizontalSpacing(8)
+        self.content_layout.setVerticalSpacing(20)  # espacement vertical augmenté
         self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.content_widget.setLayout(self.content_layout)
@@ -171,15 +190,16 @@ class MediaExplorer(QWidget):
             }
         """)
         
-    def add_video(self, video_name, thumbnail_color=None):
+    def add_video(self, video_name, thumbnail_pixmap=None, thumbnail_color=None):
         """
         Ajoute une vidéo à l'explorateur
         
         Args:
             video_name: Nom de la vidéo
-            thumbnail_color: Couleur de la miniature (hex)
+            thumbnail_pixmap: QPixmap de la miniature (optionnel)
+            thumbnail_color: Couleur de la miniature (hex) - fallback si pas d'image
         """
-        thumbnail = MediaThumbnail(video_name, thumbnail_color)
+        thumbnail = MediaThumbnail(video_name, thumbnail_pixmap, thumbnail_color)
         thumbnail.clicked.connect(self.on_thumbnail_clicked)
         self.thumbnails.append(thumbnail)
         

@@ -155,12 +155,12 @@ class KosmosApplication(QMainWindow):
         # Changer de vue
         if nom_page == "accueil":
             self.stack.setCurrentWidget(self.accueil_view)
-            
+
         elif nom_page == "importation":
             self.stack.setCurrentWidget(self.importation_view)
             if hasattr(self.importation_view, 'auto_open'):
                 self.importation_view.auto_open = True
-            
+
         elif nom_page == "tri":
             if self.tri_view:
                 self.tri_view.charger_videos()
@@ -169,17 +169,14 @@ class KosmosApplication(QMainWindow):
             else:
                 print("❌ Page de tri non disponible")
 
-        # --- C'EST ICI QUE ÇA BLOQUAIT AVANT ---      
         elif nom_page == "extraction":
             if self.extraction_view:
-                self.stack.setCurrentWidget(self.extraction_view) # On se contente d'afficher la vue
+                self.stack.setCurrentWidget(self.extraction_view)
             else:
                 print("❌ Page d'extraction non disponible")
-        # ---------------------------------------
 
         elif nom_page == "evenements":
             print("⚠️ Page d'événements pas encore implémentée")
-        
         else:
             print(f"⚠️ Page inconnue : {nom_page}")
     
@@ -197,9 +194,19 @@ class KosmosApplication(QMainWindow):
     
     def on_campagne_creee(self, nom: str, emplacement: str):
         print(f"✅ Campagne créée : {nom} dans {emplacement}")
+        # Recharger les données dans tous les contrôleurs
+        if self.tri_controller:
+            self.tri_view.charger_videos()
+        if self.extraction_controller:
+            self.extraction_controller.load_initial_data()
     
     def on_campagne_ouverte(self, chemin: str):
         print(f"✅ Campagne ouverte : {chemin}")
+        # Recharger les données dans tous les contrôleurs
+        if self.tri_controller:
+            self.tri_view.charger_videos()
+        if self.extraction_controller:
+            self.extraction_controller.load_initial_data()
     
     def closeEvent(self, event):
         if self.model.campagne_courante:

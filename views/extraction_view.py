@@ -94,7 +94,6 @@ class ExtractionView(QWidget):
         # Explorateur de média (en haut de la colonne 1)
         try:
             self.media_explorer = MediaExplorer()
-            # Pas de largeur fixe - prend toute la largeur disponible
             left_column.addWidget(self.media_explorer, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement explorateur: {e}")
@@ -111,7 +110,6 @@ class ExtractionView(QWidget):
         # Outils d'extraction (en bas de la colonne 1)
         try:
             self.extraction_tools = ExtractionTools()
-            # Pas de largeur fixe - prend toute la largeur disponible
             left_column.addWidget(self.extraction_tools, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement outils: {e}")
@@ -128,6 +126,10 @@ class ExtractionView(QWidget):
         # Créer un widget container pour la colonne gauche
         left_widget = QWidget()
         left_widget.setLayout(left_column)
+        # >>> MOD: agrandir la largeur de l'explorateur / colonne gauche
+        left_widget.setMinimumWidth(300)  # avant ~260
+        left_widget.setMaximumWidth(380)  # avant ~340
+        # <<< MOD
         
         # Ajouter la colonne gauche à la grille (colonne 0, lignes 0-1)
         grid_layout.addWidget(left_widget, 0, 0, 2, 1)
@@ -136,7 +138,6 @@ class ExtractionView(QWidget):
         # COLONNE 2-3 (Lecteur prend toute la hauteur)
         # ────────────────────────────────────────────────────────────
         
-        # Colonne centrale-droite : Lecteur en haut + Correction/Histogramme en bas
         center_right_layout = QVBoxLayout()
         center_right_layout.setSpacing(10)
         
@@ -164,11 +165,9 @@ class ExtractionView(QWidget):
         try:
             self.image_correction = ImageCorrection()
             self.image_correction.setStyleSheet("""
-            
                     background-color: black;
                     border: 2px solid white;
             """)
-            # Pas de largeur minimale - utilise stretch
             bottom_layout.addWidget(self.image_correction, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement correction: {e}")
@@ -185,12 +184,10 @@ class ExtractionView(QWidget):
         # Histogramme (droite)
         try:
             self.histogram = Histogram()
-
             self.histogram.setStyleSheet("""
                     background-color: #1a1a1a;
                     border: 2px solid white;
             """)
-            # Pas de largeur minimale - utilise stretch
             bottom_layout.addWidget(self.histogram, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement histogramme: {e}")
@@ -206,17 +203,17 @@ class ExtractionView(QWidget):
         
         center_right_layout.addLayout(bottom_layout, stretch=4)
         
-        # Créer un widget container pour la partie centrale-droite
         center_right_widget = QWidget()
         center_right_widget.setLayout(center_right_layout)
         
         # Ajouter à la grille : colonne 1-2, lignes 0-1 (toute la hauteur)
         grid_layout.addWidget(center_right_widget, 0, 1, 2, 1)
         
-        # Configurer les proportions des colonnes
-        # Colonne 0 (gauche) = 1 part, Colonne 1 (droite) = 3 parts
-        grid_layout.setColumnStretch(0, 1)  # Colonne gauche plus étroite
-        grid_layout.setColumnStretch(1, 3)  # Colonne droite plus large
+        # >>> MOD: donner un peu plus de place à la colonne gauche
+        # Colonne 0 (gauche) et colonne 1 (droite)
+        grid_layout.setColumnStretch(0, 2)  # avant: 1
+        grid_layout.setColumnStretch(1, 5)  # avant: 4
+        # <<< MOD
         
         content_widget.setLayout(grid_layout)
         main_layout.addWidget(content_widget)
@@ -236,25 +233,19 @@ class ExtractionView(QWidget):
             return
             
         try:
-            # ────────────────────────────────────────────────────────────
-            # Signaux de la NAVBAR
-            # ────────────────────────────────────────────────────────────
+            # NAVBAR
             if hasattr(self, 'navbar') and hasattr(self.navbar, 'tab_changed'):
                 self.navbar.tab_changed.connect(
                     self.controller.on_tab_changed
                 )
             
-            # ────────────────────────────────────────────────────────────
-            # Signaux de l'EXPLORATEUR DE MÉDIA
-            # ────────────────────────────────────────────────────────────
+            # EXPLORATEUR
             if hasattr(self, 'media_explorer') and hasattr(self.media_explorer, 'video_selected'):
                 self.media_explorer.video_selected.connect(
                     self.controller.on_video_selected
                 )
             
-            # ────────────────────────────────────────────────────────────
-            # Signaux des OUTILS D'EXTRACTION
-            # ────────────────────────────────────────────────────────────
+            # OUTILS D'EXTRACTION
             if hasattr(self, 'extraction_tools'):
                 if hasattr(self.extraction_tools, 'screenshot_clicked'):
                     self.extraction_tools.screenshot_clicked.connect(
@@ -273,9 +264,7 @@ class ExtractionView(QWidget):
                         self.controller.on_crop
                     )
             
-            # ────────────────────────────────────────────────────────────
-            # Signaux de la CORRECTION D'IMAGES
-            # ────────────────────────────────────────────────────────────
+            # CORRECTION
             if hasattr(self, 'image_correction'):
                 if hasattr(self.image_correction, 'color_correction_clicked'):
                     self.image_correction.color_correction_clicked.connect(
@@ -290,9 +279,7 @@ class ExtractionView(QWidget):
                         self.controller.on_brightness_changed
                     )
             
-            # ────────────────────────────────────────────────────────────
-            # Signaux du LECTEUR VIDÉO
-            # ────────────────────────────────────────────────────────────
+            # LECTEUR
             if hasattr(self, 'video_player'):
                 if hasattr(self.video_player, 'play_pause_clicked'):
                     self.video_player.play_pause_clicked.connect(
@@ -302,7 +289,6 @@ class ExtractionView(QWidget):
                     self.video_player.position_changed.connect(
                         self.controller.on_position_changed
                     )
-                # Signaux des contrôles
                 if hasattr(self.video_player, 'controls'):
                     if hasattr(self.video_player.controls, 'previous_clicked'):
                         self.video_player.controls.previous_clicked.connect(
@@ -328,9 +314,6 @@ class ExtractionView(QWidget):
         """
         Met à jour la liste des vidéos dans l'explorateur
         Appelé par le contrôleur
-        
-        Args:
-            videos: Liste de dictionnaires avec les infos des vidéos
         """
         if hasattr(self, 'media_explorer') and hasattr(self.media_explorer, 'add_video'):
             if hasattr(self.media_explorer, 'clear_videos'):
@@ -338,16 +321,13 @@ class ExtractionView(QWidget):
             for video in videos:
                 self.media_explorer.add_video(
                     video['name'],
+                    video.get('thumbnail_pixmap'),
                     video.get('thumbnail_color', '#00CBA9')
                 )
         
     def update_video_player(self, video_data):
         """
         Met à jour le lecteur avec les données de la vidéo
-        Appelé par le contrôleur
-        
-        Args:
-            video_data: Dictionnaire avec les données de la vidéo
         """
         if hasattr(self, 'video_player'):
             if hasattr(self.video_player, 'update_metadata') and 'metadata' in video_data:
@@ -358,10 +338,6 @@ class ExtractionView(QWidget):
     def update_histogram(self, histogram_data=None):
         """
         Met à jour l'histogramme
-        Appelé par le contrôleur
-        
-        Args:
-            histogram_data: Données pour l'histogramme (optionnel)
         """
         if hasattr(self, 'histogram'):
             if histogram_data and hasattr(self.histogram, 'update_histogram'):
@@ -370,21 +346,12 @@ class ExtractionView(QWidget):
                 self.histogram.refresh()
         
     def show_message(self, message, message_type="info"):
-        """
-        Affiche un message à l'utilisateur
-        
-        Args:
-            message: Message à afficher
-            message_type: Type de message ("info", "success", "warning", "error")
-        """
+        """Affiche un message à l'utilisateur"""
         print(f"[{message_type.upper()}] {message}")
         
     def get_correction_values(self):
         """
         Récupère les valeurs actuelles de correction d'image
-        
-        Returns:
-            dict: Dictionnaire avec contraste et luminosité
         """
         if hasattr(self, 'image_correction'):
             return {
@@ -397,42 +364,3 @@ class ExtractionView(QWidget):
         """Réinitialise toutes les corrections d'image"""
         if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'reset_all'):
             self.image_correction.reset_all()
-
-
-# ============================================================
-# Exemple d'utilisation (pour tests)
-# ============================================================
-if __name__ == '__main__':
-    from PyQt6.QtWidgets import QApplication, QMainWindow
-    from PyQt6.QtGui import QFont
-    
-    print("🚀 Démarrage de la vue Extraction...")
-    print(f"📁 Répertoire du projet: {project_root}")
-    
-    # Créer une vue sans contrôleur pour tester
-    app = QApplication(sys.argv)
-    font = QFont("Montserrat", 10)
-    app.setFont(font)
-    
-    window = QMainWindow()
-    window.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-    window.setGeometry(50, 50, 1600, 900)
-    window.setWindowTitle("Extraction View - Test")
-    window.setStyleSheet("background-color: black;")
-    
-    print("📦 Chargement des composants...")
-    view = ExtractionView()
-    
-    # Ajouter des vidéos de test
-    if hasattr(view, 'media_explorer'):
-        view.media_explorer.add_video("Video_1", "#00CBA9")
-        view.media_explorer.add_video("Video_2", "#D4A574")
-        view.media_explorer.add_video("Video_3", "#FF6B6B")
-        view.media_explorer.add_video("Video_4", "#4ECDC4")
-    
-    window.setCentralWidget(view)
-    print("✅ Interface chargée avec succès!")
-    
-    window.show()
-    
-    sys.exit(app.exec())

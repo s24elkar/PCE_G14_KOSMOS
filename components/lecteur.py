@@ -230,7 +230,7 @@ class VideoControls(QWidget):
         
         # Bouton Play/Pause avec icône personnalisée
         self.play_pause_btn = QPushButton()
-        self.play_pause_btn.setFixedSize(55, 55)
+        self.play_pause_btn.setFixedSize(45, 45)  # Réduit de 55 à 45
         self.play_pause_btn.setStyleSheet(button_style)
         self.play_pause_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.play_pause_btn.setToolTip("Lecture / Pause")
@@ -349,7 +349,7 @@ class VideoPlayer(QWidget):
         
         # Zone vidéo avec overlay
         video_container = QFrame()
-        video_container.setMinimumHeight(400)
+        video_container.setMinimumHeight(300)  # Réduit de 350 à 300
         video_container.setStyleSheet("""
             QFrame {
                 background-color: black;
@@ -388,12 +388,14 @@ class VideoPlayer(QWidget):
         video_layout.addWidget(self.video_widget)
         video_container.setLayout(video_layout)
         
-        main_layout.addWidget(video_container)
+        # Utiliser stretch pour que la vidéo s'adapte mais laisse de la place aux contrôles
+        main_layout.addWidget(video_container, stretch=1)
         
-        # Timeline
+        # Timeline avec hauteur fixe réduite pour rester visible
         timeline_container = QWidget()
+        timeline_container.setFixedHeight(35)  # Réduit de 45 à 35
         timeline_layout = QVBoxLayout()
-        timeline_layout.setContentsMargins(15, 8, 15, 8)
+        timeline_layout.setContentsMargins(10, 5, 10, 5)  # Marges réduites
         timeline_layout.setSpacing(0)
         
         self.timeline = VideoTimeline()
@@ -402,9 +404,14 @@ class VideoPlayer(QWidget):
         
         timeline_container.setLayout(timeline_layout)
         timeline_container.setStyleSheet("background-color: black;")
-        main_layout.addWidget(timeline_container)
+        main_layout.addWidget(timeline_container, stretch=0)
         
-        # Contrôles
+        # Contrôles avec hauteur fixe réduite pour rester visibles
+        controls_container = QWidget()
+        controls_container.setFixedHeight(55)  # Réduit de 70 à 55
+        controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        
         self.controls = VideoControls()
         self.controls.play_pause_clicked.connect(self.toggle_play_pause)
         self.controls.rewind_clicked.connect(self.seek_backward)
@@ -412,7 +419,9 @@ class VideoPlayer(QWidget):
         self.controls.speed_changed.connect(self.on_speed_changed)
         self.controls.detach_clicked.connect(self.on_detach_player)
         
-        main_layout.addWidget(self.controls)
+        controls_layout.addWidget(self.controls)
+        controls_container.setLayout(controls_layout)
+        main_layout.addWidget(controls_container, stretch=0)
         
         self.setLayout(main_layout)
         self.setObjectName("VideoPlayer")

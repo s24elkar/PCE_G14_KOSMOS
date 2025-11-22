@@ -376,6 +376,7 @@ class NavBarAvecMenu(QWidget):
         tab_name = clicked_btn.text()
         self.tab_changed.emit(tab_name)
     
+    
     def mousePressEvent(self, event):
         """Permet de déplacer la fenêtre"""
         if event.button() == Qt.MouseButton.LeftButton:

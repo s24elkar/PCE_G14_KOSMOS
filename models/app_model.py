@@ -82,6 +82,7 @@ class Campagne:
         self.nom = nom
         self.emplacement = emplacement
         self.videos: List[Video] = []
+        self.workspace_extraction = ""  # Chemin vers le dossier extraction
         self.date_creation = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.date_modification = self.date_creation
         
@@ -115,6 +116,7 @@ class Campagne:
         return {
             'nom': self.nom,
             'emplacement': self.emplacement,
+            'workspace_extraction': self.workspace_extraction,
             'date_creation': self.date_creation,
             'date_modification': self.date_modification,
             'videos': [v.to_dict() for v in self.videos]
@@ -127,6 +129,7 @@ class Campagne:
             nom=data.get('nom', ''),
             emplacement=data.get('emplacement', '')
         )
+        campagne.workspace_extraction = data.get('workspace_extraction', '')
         campagne.date_creation = data.get('date_creation', '')
         campagne.date_modification = data.get('date_modification', '')
         campagne.videos = [Video.from_dict(v) for v in data.get('videos', [])]
