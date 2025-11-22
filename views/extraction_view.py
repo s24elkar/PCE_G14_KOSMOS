@@ -163,19 +163,21 @@ class ExtractionView(QWidget):
         # Correction d'images (gauche)
         try:
             self.image_correction = ImageCorrection()
+            self.image_correction.setStyleSheet("""
+            
+                    background-color: black;
+                    border: 2px solid white;
+            """)
             # Pas de largeur minimale - utilise stretch
             bottom_layout.addWidget(self.image_correction, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement correction: {e}")
             correction_placeholder = QLabel("CORRECTION\nD'IMAGES")
-            correction_placeholder.setObjectName("correctionPlaceholder")
             correction_placeholder.setStyleSheet("""
-                #correctionPlaceholder {
                     background-color: #1a1a1a; 
                     color: white; 
                     padding: 20px;
                     border: 2px solid white;
-                }
             """)
             correction_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             bottom_layout.addWidget(correction_placeholder, stretch=1)
@@ -183,19 +185,21 @@ class ExtractionView(QWidget):
         # Histogramme (droite)
         try:
             self.histogram = Histogram()
+
+            self.histogram.setStyleSheet("""
+                    background-color: #1a1a1a;
+                    border: 2px solid white;
+            """)
             # Pas de largeur minimale - utilise stretch
             bottom_layout.addWidget(self.histogram, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement histogramme: {e}")
-            histogram_placeholder = QLabel("HISTOGRAMME")
-            histogram_placeholder.setObjectName("histogramPlaceholder")
+            histogram_placeholder = QLabel("Histogramme")
             histogram_placeholder.setStyleSheet("""
-                #histogramPlaceholder {
                     background-color: #1a1a1a; 
                     color: white; 
                     padding: 20px;
-                    border: 2px solid white;
-                }
+                    border: 4px solid white;
             """)
             histogram_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             bottom_layout.addWidget(histogram_placeholder, stretch=1)

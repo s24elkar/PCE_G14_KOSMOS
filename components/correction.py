@@ -126,6 +126,7 @@ class ImageCorrection(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("ImageCorrection")  
         self.init_ui()
         
     def init_ui(self):
@@ -154,6 +155,7 @@ class ImageCorrection(QWidget):
         controls_layout = QVBoxLayout()
         controls_layout.setContentsMargins(15, 15, 15, 15)
         controls_layout.setSpacing(20)
+        controls_container.setStyleSheet("background-color: black;")
         
         # Bouton Correction couleurs
         self.color_btn = ColorCorrectionButton()
@@ -178,12 +180,9 @@ class ImageCorrection(QWidget):
         main_layout.addWidget(controls_container)
         
         self.setLayout(main_layout)
-        self.setObjectName("imageCorrection")
         self.setStyleSheet("""
-            #imageCorrection {
                 background-color: black;
                 border: 2px solid white;
-            }
         """)
         
     def reset_all(self):
@@ -222,7 +221,7 @@ if __name__ == '__main__':
     correction = ImageCorrection()
     
     # Connecter les signaux
-    correction.color_correction_clicked.connect(lambda: print("🎨 Correction couleurs"))
+    correction.color_correction_clicked.connect(lambda: print("Correction couleurs"))
     correction.contrast_changed.connect(lambda v: print(f"Contraste: {v}"))
     correction.brightness_changed.connect(lambda v: print(f"Luminosité: {v}"))
     

@@ -192,6 +192,65 @@ class ExtractionKosmosController(QObject):
     # CONTRÔLE DU LECTEUR
     # ═══════════════════════════════════════════════════════════════
 
+    def set_view(self, view):
+        """Associe la vue à ce contrôleur"""
+        self.view = view
+        self.detached_window = None  # AJOUT
+        
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.frame_captured.connect(self.save_captured_frame)
+            # AJOUT : Connecter le signal de détachement
+            self.view.video_player.detach_requested.connect(self.on_detach_player)
+
+    def on_detach_player(self):
+        """Détache le lecteur dans une nouvelle fenêtre"""
+        if not self.view or not hasattr(self.view, 'video_player'):
+            return
+        
+        # Importer la fenêtre détachée
+        from components.detached_player import DetachedPlayerWindow
+        
+        # Sauvegarder la référence au layout parent
+        if not hasattr(self, 'video_player_parent_layout'):
+            # Trouver le parent layout (normalement center_right_layout)
+            self.video_player_parent_layout = self.view.video_player.parent().layout()
+            self.video_player_parent_index = self.video_player_parent_layout.indexOf(self.view.video_player)
+        
+        # Retirer le lecteur de la vue principale
+        video_player = self.view.video_player
+        self.video_player_parent_layout.removeWidget(video_player)
+        video_player.setParent(None)
+        
+        # Créer la fenêtre détachée
+        self.detached_window = DetachedPlayerWindow(video_player, self.view)
+        self.detached_window.closed.connect(self.on_reattach_player)
+        self.detached_window.show()
+        
+        print("🗗 Lecteur détaché dans une nouvelle fenêtre")
+
+    def on_reattach_player(self):
+        """Réattache le lecteur à la vue principale"""
+        if not self.detached_window or not self.view:
+            return
+        
+        # Récupérer le lecteur
+        video_player = self.detached_window.video_player
+        video_player.setParent(self.view)
+        
+        # Réinsérer dans le layout à la bonne position
+        if hasattr(self, 'video_player_parent_layout') and hasattr(self, 'video_player_parent_index'):
+            self.video_player_parent_layout.insertWidget(
+                self.video_player_parent_index, 
+                video_player, 
+                stretch=5
+            )
+        
+        # Nettoyer
+        self.detached_window.deleteLater()
+        self.detached_window = None
+        
+        print("🔗 Lecteur réattaché à la vue principale")
+        
     def on_play_pause(self):
         """Gère le bouton Play/Pause"""
         print("⏯️ Play/Pause demandé")

@@ -126,6 +126,10 @@ class Histogram(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet("""
+                background-color: #1a1a1a;
+                border: 2px solid white;
+        """)
         self.init_ui()
         
     def init_ui(self):
@@ -158,7 +162,9 @@ class Histogram(QWidget):
         container_layout.setContentsMargins(10, 10, 10, 10)
         container_layout.addWidget(self.histogram_widget)
         container.setLayout(container_layout)
-        container.setStyleSheet("background-color: black;")
+        container.setStyleSheet("background-color: black; "
+)
+
         
         main_layout.addWidget(container)
         

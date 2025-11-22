@@ -5,9 +5,10 @@ Lecteur avec timeline, contrôles et affichage des métadonnées
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QSlider, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect, QUrl, QSize, QRectF
-from PyQt6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap, QIcon
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoFrame
 from PyQt6.QtMultimediaWidgets import QVideoWidget
+from pathlib import Path
 
 
 class MetadataOverlay(QWidget):
@@ -23,36 +24,35 @@ class MetadataOverlay(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         layout.setSpacing(2)
         
-        # Style pour les labels - fond rose semi-transparent
+        # Style pour les labels
         label_style = """
             QLabel {
                 color: white;
                 font-size: 14px;
                 font-weight: bold;
-                
                 padding: 3px 10px;
                 border-radius: 0px;
                 font-family: Arial;
             }
         """
         
-        self.time_label = QLabel("Time : 13:06")
+        self.time_label = QLabel("⏰ Time : 13:06")
         self.time_label.setStyleSheet(label_style)
         layout.addWidget(self.time_label)
         
-        self.temp_label = QLabel("Temp : 15°C")
+        self.temp_label = QLabel("🌡️ Temp : 15°C")
         self.temp_label.setStyleSheet(label_style)
         layout.addWidget(self.temp_label)
         
-        self.salinity_label = QLabel("Salinity : xx")
+        self.salinity_label = QLabel("💧 Salinity : xx")
         self.salinity_label.setStyleSheet(label_style)
         layout.addWidget(self.salinity_label)
         
-        self.depth_label = QLabel("Depth : 10 m")
+        self.depth_label = QLabel("📏 Depth : 10 m")
         self.depth_label.setStyleSheet(label_style)
         layout.addWidget(self.depth_label)
         
-        self.pression_label = QLabel("Pression : xx bar")
+        self.pression_label = QLabel("⚖️ Pression : xx bar")
         self.pression_label.setStyleSheet(label_style)
         layout.addWidget(self.pression_label)
         
@@ -64,15 +64,15 @@ class MetadataOverlay(QWidget):
     def update_metadata(self, time=None, temp=None, salinity=None, depth=None, pression=None):
         """Met à jour les métadonnées affichées"""
         if time is not None:
-            self.time_label.setText(f"Time : {time}")
+            self.time_label.setText(f"⏰ Time : {time}")
         if temp is not None:
-            self.temp_label.setText(f"Temp : {temp}")
+            self.temp_label.setText(f"🌡️ Temp : {temp}")
         if salinity is not None:
-            self.salinity_label.setText(f"Salinity : {salinity}")
+            self.salinity_label.setText(f"💧 Salinity : {salinity}")
         if depth is not None:
-            self.depth_label.setText(f"Depth : {depth}")
+            self.depth_label.setText(f"📏 Depth : {depth}")
         if pression is not None:
-            self.pression_label.setText(f"Pression : {pression}")
+            self.pression_label.setText(f"⚖️ Pression : {pression}")
 
 
 class VideoTimeline(QWidget):
@@ -82,7 +82,7 @@ class VideoTimeline(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.markers = []  # Positions des marqueurs (0-100)
+        self.markers = []
         self.current_value = 0
         self.init_ui()
         
@@ -91,7 +91,6 @@ class VideoTimeline(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # Slider personnalisé (invisible, juste pour la logique)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(1000)
@@ -99,7 +98,6 @@ class VideoTimeline(QWidget):
         self.slider.valueChanged.connect(self._on_value_changed)
         self.slider.setFixedHeight(30)
         
-        # Style du slider avec marqueurs
         self.slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: #2a2a2a;
@@ -123,165 +121,225 @@ class VideoTimeline(QWidget):
         layout.addWidget(self.slider)
         self.setLayout(layout)
         
-        # Ajouter des marqueurs par défaut (positions en pourcentage)
-        #self.add_marker(15)
-        #self.add_marker(30)
-        #self.add_marker(50)
-        #self.add_marker(70)
-        #self.add_marker(85)
-        
     def _on_value_changed(self, value):
-        """Gère le changement de valeur"""
         self.current_value = value
         self.update()
         self.position_changed.emit(value)
         
     def paintEvent(self, event):
-        """Dessine les marqueurs rouges sur la timeline"""
         super().paintEvent(event)
         
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Récupérer les dimensions du groove
         groove_rect = self.slider.geometry()
         groove_y = groove_rect.height() // 2
-        groove_left = 10  # Marge gauche
-        groove_right = self.slider.width() - 10  # Marge droite
+        groove_left = 10
+        groove_right = self.slider.width() - 10
         groove_width = groove_right - groove_left
         
-        # Dessiner les marqueurs rouges
         for marker_pos in self.markers:
-            # Calculer la position X du marqueur
             x = groove_left + (marker_pos / 100.0) * groove_width
-            
-            # Dessiner un petit rectangle rouge
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(255, 0, 0))
             marker_rect = QRect(int(x - 2), groove_y - 3, 4, 6)
             painter.drawRect(marker_rect)
         
     def add_marker(self, position):
-        """Ajoute un marqueur à une position (0-100)"""
         if 0 <= position <= 100:
             self.markers.append(position)
             self.update()
             
     def clear_markers(self):
-        """Supprime tous les marqueurs"""
         self.markers.clear()
         self.update()
         
     def get_position(self):
-        """Retourne la position actuelle (0-1000)"""
         return self.slider.value()
         
     def set_position(self, position):
-        """Définit la position (0-1000)"""
         self.slider.setValue(position)
 
 
 class VideoControls(QWidget):
-    """Contrôles de lecture vidéo"""
+    """Contrôles de lecture vidéo avec icônes personnalisées"""
     
+    # Signaux
     play_pause_clicked = pyqtSignal()
     previous_clicked = pyqtSignal()
     next_clicked = pyqtSignal()
     rewind_clicked = pyqtSignal()
     forward_clicked = pyqtSignal()
+    speed_changed = pyqtSignal(float)
+    detach_clicked = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.current_speed = 1.0
         self.is_playing = False
+        
+        # Chemins des icônes
+        self.icons_path = Path(__file__).parent.parent / "assets" / "icons"
+        self.play_icon_path = self.icons_path / "start.png"
+        self.pause_icon_path = self.icons_path / "Pause.png"
+        self.speed_icon_path = self.icons_path / "vitesse.png"
+        
         self.init_ui()
         
     def init_ui(self):
         layout = QHBoxLayout()
-        layout.setContentsMargins(15, 10, 15, 10)
-        layout.setSpacing(15)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(8)
         
-        # Style des boutons - fond gris foncé avec bordure
+        # Style uniforme pour tous les boutons
         button_style = """
             QPushButton {
                 background-color: #2a2a2a;
                 color: white;
-                border: 1px solid #555;
+                border: 2px solid #444;
                 border-radius: 5px;
-                padding: 8px 15px;
-                font-size: 13px;
+                font-size: 14px;
                 font-weight: bold;
-                min-width: 40px;
             }
             QPushButton:hover {
                 background-color: #3a3a3a;
-                border-color: #777;
+                border-color: #2196F3;
             }
             QPushButton:pressed {
                 background-color: #1a1a1a;
             }
         """
         
-        # Bouton précédent
-        self.prev_btn = QPushButton("⏮")
-        self.prev_btn.setFixedSize(45, 35)
-        self.prev_btn.setStyleSheet(button_style)
-        self.prev_btn.clicked.connect(self.previous_clicked.emit)
-        layout.addWidget(self.prev_btn)
+        # Bouton Vidéo précédente
+        self.btn_previous = QPushButton("⏮️")
+        self.btn_previous.setFixedSize(45, 45)
+        self.btn_previous.setStyleSheet(button_style)
+        self.btn_previous.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_previous.setToolTip("Vidéo précédente")
+        self.btn_previous.clicked.connect(self.previous_clicked.emit)
+        layout.addWidget(self.btn_previous)
         
-        # Bouton reculer 10s
-        self.rewind_btn = QPushButton("-10s")
-        self.rewind_btn.setFixedSize(55, 35)
-        self.rewind_btn.setStyleSheet(button_style)
-        self.rewind_btn.clicked.connect(self.rewind_clicked.emit)
-        layout.addWidget(self.rewind_btn)
+        # Bouton Reculer
+        self.btn_rewind = QPushButton("-10s")
+        self.btn_rewind.setFixedSize(45, 45)
+        self.btn_rewind.setStyleSheet(button_style)
+        self.btn_rewind.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_rewind.setToolTip("Reculer de 10 secondes")
+        self.btn_rewind.clicked.connect(self.rewind_clicked.emit)
+        layout.addWidget(self.btn_rewind)
         
-        # Bouton play/pause (plus grand)
-        self.play_pause_btn = QPushButton("▶")
-        self.play_pause_btn.setFixedSize(45, 35)
-        self.play_pause_btn.setStyleSheet(button_style + """
-            QPushButton {
-                font-size: 16px;
-            }
-        """)
-        self.play_pause_btn.clicked.connect(self.toggle_play_pause)
+        # Bouton Play/Pause avec icône personnalisée
+        self.play_pause_btn = QPushButton()
+        self.play_pause_btn.setFixedSize(55, 55)
+        self.play_pause_btn.setStyleSheet(button_style)
+        self.play_pause_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.play_pause_btn.setToolTip("Lecture / Pause")
+        self.play_pause_btn.clicked.connect(self.on_play_pause_clicked)
+        self.update_play_pause_icon()
         layout.addWidget(self.play_pause_btn)
         
-        # Bouton avancer 10s
-        self.forward_btn = QPushButton("+10s")
-        self.forward_btn.setFixedSize(55, 35)
-        self.forward_btn.setStyleSheet(button_style)
-        self.forward_btn.clicked.connect(self.forward_clicked.emit)
-        layout.addWidget(self.forward_btn)
+        # Bouton Avancer
+        self.btn_forward = QPushButton("+10s")
+        self.btn_forward.setFixedSize(45, 45)
+        self.btn_forward.setStyleSheet(button_style)
+        self.btn_forward.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_forward.setToolTip("Avancer de 10 secondes")
+        self.btn_forward.clicked.connect(self.forward_clicked.emit)
+        layout.addWidget(self.btn_forward)
         
-        # Espacement
+        # Bouton Vidéo suivante
+        self.btn_next = QPushButton("⏭️")
+        self.btn_next.setFixedSize(45, 45)
+        self.btn_next.setStyleSheet(button_style)
+        self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_next.setToolTip("Vidéo suivante")
+        self.btn_next.clicked.connect(self.next_clicked.emit)
+        layout.addWidget(self.btn_next)
+        
+        layout.addSpacing(20)
+        
+        # Bouton de vitesse avec icône personnalisée
+        self.btn_speed = QPushButton(f"{self.current_speed}x")
+        self.btn_speed.setFixedSize(70, 45)
+        self.btn_speed.setStyleSheet(button_style)
+        self.btn_speed.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_speed.setToolTip("Changer la vitesse de lecture")
+        self.btn_speed.clicked.connect(self.toggle_speed)
+        
+        # Ajouter l'icône de vitesse si elle existe
+        if self.speed_icon_path.exists():
+            icon = QIcon(str(self.speed_icon_path))
+            self.btn_speed.setIcon(icon)
+            self.btn_speed.setIconSize(QSize(24, 24))
+        
+        layout.addWidget(self.btn_speed)
+        
+        layout.addSpacing(20)
+        
+        # Bouton détacher
+        self.btn_detach = QPushButton("🪟")
+        self.btn_detach.setFixedSize(45, 45)
+        self.btn_detach.setStyleSheet(button_style)
+        self.btn_detach.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_detach.setToolTip("Détacher dans une nouvelle fenêtre")
+        self.btn_detach.clicked.connect(self.detach_clicked.emit)
+        layout.addWidget(self.btn_detach)
+        
         layout.addStretch()
         
         self.setLayout(layout)
-        self.setStyleSheet("background-color: black;")
+        self.setStyleSheet("background-color: #1a1a1a;")
+    
+    def update_play_pause_icon(self):
+        """Met à jour l'icône du bouton play/pause"""
+        icon_path = self.pause_icon_path if self.is_playing else self.play_icon_path
         
-    def toggle_play_pause(self):
-        """Bascule entre lecture et pause"""
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            self.play_pause_btn.setIcon(icon)
+            self.play_pause_btn.setIconSize(QSize(32, 32))
+            self.play_pause_btn.setText("")
+        else:
+            # Fallback sur les emoji si les images n'existent pas
+            self.play_pause_btn.setText("⏸️" if self.is_playing else "▶️")
+            self.play_pause_btn.setIcon(QIcon())
+    
+    def on_play_pause_clicked(self):
         self.is_playing = not self.is_playing
-        self.play_pause_btn.setText("⏸" if self.is_playing else "▶")
+        self.update_play_pause_icon()
         self.play_pause_clicked.emit()
+    
+    def toggle_speed(self):
+        speeds = [1.0, 1.5, 2.0, 0.5]
+        current_index = speeds.index(self.current_speed)
+        next_index = (current_index + 1) % len(speeds)
+        self.current_speed = speeds[next_index]
+        
+        self.btn_speed.setText(f"{self.current_speed}x")
+        self.speed_changed.emit(self.current_speed)
+        print(f"⚡ Vitesse changée : {self.current_speed}x")
+    
+    def update_play_pause_button(self, is_playing):
+        self.is_playing = is_playing
+        self.update_play_pause_icon()
 
 
 class VideoPlayer(QWidget):
-    """
-    Composant Lecteur Vidéo
-    Lecteur avec overlay de métadonnées, timeline et contrôles
-    """
+    """Composant Lecteur Vidéo"""
     
     # Signaux
     play_pause_clicked = pyqtSignal()
     position_changed = pyqtSignal(int)
-    frame_captured = pyqtSignal(QPixmap) # Signal pour l'image capturée
+    frame_captured = pyqtSignal(QPixmap)
+    detach_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duration = 0
-        self.media_player = None  # Sera initialisé plus tard
+        self.media_player = None
+        self.audio_output = None
         self._player_initialized = False
+        self.playback_speed = 1.0
         self.init_ui()
 
     def init_ui(self):
@@ -305,10 +363,10 @@ class VideoPlayer(QWidget):
         self.video_widget = QVideoWidget()
         self.video_widget.setStyleSheet("background-color: black;")
         
-        # Overlay de métadonnées (parenté au video_widget pour superposition)
+        # Overlay de métadonnées
         self.metadata_overlay = MetadataOverlay(self.video_widget)
         
-        # Bouton plein écran en bas à droite
+        # Bouton plein écran
         self.fullscreen_btn = QPushButton("⛶")
         self.fullscreen_btn.setFixedSize(35, 35)
         self.fullscreen_btn.setStyleSheet("""
@@ -332,14 +390,13 @@ class VideoPlayer(QWidget):
         
         main_layout.addWidget(video_container)
         
-        # Timeline avec fond noir
+        # Timeline
         timeline_container = QWidget()
         timeline_layout = QVBoxLayout()
         timeline_layout.setContentsMargins(15, 8, 15, 8)
         timeline_layout.setSpacing(0)
         
         self.timeline = VideoTimeline()
-        # Connexion du signal de la timeline (utilisateur déplace le curseur)
         self.timeline.position_changed.connect(self.on_timeline_moved)
         timeline_layout.addWidget(self.timeline)
         
@@ -349,10 +406,11 @@ class VideoPlayer(QWidget):
         
         # Contrôles
         self.controls = VideoControls()
-        # Connexion des contrôles
         self.controls.play_pause_clicked.connect(self.toggle_play_pause)
         self.controls.rewind_clicked.connect(self.seek_backward)
         self.controls.forward_clicked.connect(self.seek_forward)
+        self.controls.speed_changed.connect(self.on_speed_changed)
+        self.controls.detach_clicked.connect(self.on_detach_player)
         
         main_layout.addWidget(self.controls)
         
@@ -366,45 +424,48 @@ class VideoPlayer(QWidget):
         """)
 
     def showEvent(self, event):
-        """Appelé lorsque le widget est sur le point d'être affiché."""
         super().showEvent(event)
         if not self._player_initialized:
             self.setup_player()
 
     def setup_player(self):
-        """Initialise le lecteur multimédia"""
         if self._player_initialized:
             return
             
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
-
         self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
-
-        # Connexion des signaux du lecteur
         self.media_player.positionChanged.connect(self.on_position_changed)
         self.media_player.durationChanged.connect(self.on_duration_changed)
         self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
         self._player_initialized = True
+        
+        print("✅ Lecteur vidéo initialisé")
 
     def load_video(self, file_path):
-        """Charge une vidéo depuis un fichier"""
-        # Sécurité : si le lecteur n'est pas encore initialisé (parce que le widget
-        # n'a pas encore été montré), on force son initialisation.
         if not self._player_initialized:
             self.setup_player()
             
         url = QUrl.fromLocalFile(file_path)
         self.media_player.setSource(url)
-        self.media_player.pause() # Charger sans démarrer automatiquement
-        self.controls.is_playing = False
-        self.controls.play_pause_btn.setText("▶")
+        self.media_player.setPlaybackRate(self.playback_speed)
+        self.media_player.pause()
+        self.controls.update_play_pause_button(False)
+        
+        print(f"📹 Vidéo chargée : {file_path}")
+
+    def on_speed_changed(self, speed: float):
+        self.playback_speed = speed
+        if self.media_player:
+            self.media_player.setPlaybackRate(speed)
+            print(f"⚡ Vitesse appliquée : {speed}x")
+    
+    def on_detach_player(self):
+        print("🗗 Détachement demandé")
+        self.detach_requested.emit()
 
     def toggle_play_pause(self):
-        """Bascule entre lecture et pause"""
-        # Note: VideoControls a déjà basculé son état interne et le texte du bouton
-        # Nous devons juste synchroniser le lecteur
         if not self._player_initialized:
             return
 
@@ -413,18 +474,15 @@ class VideoPlayer(QWidget):
         else:
             self.media_player.pause()
         
-        # Émettre le signal pour le contrôleur (si besoin d'actions supplémentaires)
         self.play_pause_clicked.emit()
 
     def grab_frame(self) -> None:
-        """
-        Capture l'image actuelle affichée dans le QVideoWidget.
-        Émet un signal `frame_captured` avec le QPixmap.
-        """
         if not self._player_initialized:
+            print("❌ Lecteur non initialisé")
             return
 
         if not self.video_widget.isVisible() or self.video_widget.size().isEmpty():
+            print("❌ Widget vidéo non visible")
             return
 
         was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
@@ -434,37 +492,34 @@ class VideoPlayer(QWidget):
         QTimer.singleShot(150, lambda: self._capture_and_resume(was_playing))
 
     def _capture_and_resume(self, resume_playing):
-        """Capture l'image et la transmet via un signal."""
         video_frame = self.media_player.videoSink().videoFrame()
         if video_frame.isValid():
             image = video_frame.toImage()
             pixmap = QPixmap.fromImage(image)
             self.frame_captured.emit(pixmap)
+            print("✅ Frame capturée")
+        else:
+            print("❌ Frame invalide")
 
         if resume_playing:
             self.media_player.play()
 
     def on_position_changed(self, position):
-        """Appelé quand la position de lecture change (ms)"""
         if not self._player_initialized:
             return
 
-        # Mettre à jour la timeline sans déclencher le signal de changement
         if self.duration > 0:
             slider_pos = int((position / self.duration) * 1000)
             self.timeline.slider.blockSignals(True)
             self.timeline.set_position(slider_pos)
             self.timeline.slider.blockSignals(False)
             
-        # Émettre le signal pour le contrôleur
         self.position_changed.emit(position)
 
     def on_duration_changed(self, duration):
-        """Appelé quand la durée de la vidéo change (ms)"""
         self.duration = duration
 
     def on_timeline_moved(self, value):
-        """Appelé quand l'utilisateur bouge la timeline (0-1000)"""
         if not self._player_initialized:
             return
 
@@ -473,53 +528,45 @@ class VideoPlayer(QWidget):
             self.media_player.setPosition(position)
 
     def seek_backward(self):
-        """Recule de 10 secondes"""
         if not self._player_initialized:
             return
-
         self.media_player.setPosition(max(0, self.media_player.position() - 10000))
+        print("⏪ Recul de 10s")
 
     def seek_forward(self):
-        """Avance de 10 secondes"""
         if not self._player_initialized:
             return
-
         self.media_player.setPosition(min(self.duration, self.media_player.position() + 10000))
+        print("⏩ Avance de 10s")
 
     def resizeEvent(self, event):
-        """Redimensionne l'overlay et le bouton plein écran quand le widget change de taille"""
         super().resizeEvent(event)
         if hasattr(self, 'metadata_overlay'):
             self.metadata_overlay.setGeometry(0, 0, self.video_widget.width(), self.video_widget.height())
         if hasattr(self, 'fullscreen_btn'):
-            # Positionner le bouton en bas à droite
             btn_x = self.video_widget.width() - self.fullscreen_btn.width() - 10
             btn_y = self.video_widget.height() - self.fullscreen_btn.height() - 10
             self.fullscreen_btn.move(btn_x, btn_y)
             
     def update_metadata(self, **kwargs):
-        """Met à jour les métadonnées affichées"""
         self.metadata_overlay.update_metadata(**kwargs)
         
     def add_timeline_marker(self, position):
-        """Ajoute un marqueur rouge sur la timeline (0-100)"""
         self.timeline.add_marker(position)
         
     def clear_timeline_markers(self):
-        """Supprime tous les marqueurs de la timeline"""
         self.timeline.clear_markers()
     
     def on_media_status_changed(self, status):
-        """Gère les changements d'état du média"""
         if not self._player_initialized:
             return
 
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.controls.is_playing = False
-            self.controls.play_pause_btn.setText("▶")
+            self.controls.update_play_pause_button(False)
+            print("📹 Fin de la vidéo")
 
 
-# Exemple d'utilisation
+# Test
 if __name__ == '__main__':
     import sys
     from PyQt6.QtWidgets import QApplication, QMainWindow
@@ -532,13 +579,12 @@ if __name__ == '__main__':
     
     player = VideoPlayer()
     
-    # Connecter les signaux
-    player.play_pause_clicked.connect(lambda: print("▶/⏸ Play/Pause"))
-    player.position_changed.connect(lambda pos: print(f"Position: {pos}"))
-    player.controls.previous_clicked.connect(lambda: print("⏮ Précédent"))
-    player.controls.next_clicked.connect(lambda: print("⏭ Suivant"))
-    player.controls.rewind_clicked.connect(lambda: print("◀ -10s"))
-    player.controls.forward_clicked.connect(lambda: print("▶ +10s"))
+    player.play_pause_clicked.connect(lambda: print("▶️/⏸️ Play/Pause"))
+    player.position_changed.connect(lambda pos: print(f"Position: {pos}ms"))
+    player.controls.previous_clicked.connect(lambda: print("⏮️ Précédent"))
+    player.controls.next_clicked.connect(lambda: print("⏭️ Suivant"))
+    player.controls.speed_changed.connect(lambda s: print(f"⚡ Vitesse: {s}x"))
+    player.detach_requested.connect(lambda: print("🪟 Détachement"))
     
     window.setCentralWidget(player)
     window.show()
