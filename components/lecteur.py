@@ -75,30 +75,36 @@ class MetadataOverlay(QWidget):
             self.pression_label.setText(f"⚖️ Pression : {pression}")
 
 
-class VideoTimeline(QWidget):
+class VideoTimeline(QSlider):
     """Timeline avec marqueurs rouges pour les points clés"""
     
-    position_changed = pyqtSignal(int)
+    position_changed = pyqtSignal(int) # Émis quand le slider principal bouge
+    selection_changed = pyqtSignal(int, int) # Émis quand les poignées de sélection bougent
     
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(Qt.Orientation.Horizontal, parent)
         self.markers = []
         self.current_value = 0
+        
+        # --- AJOUT POUR LA SÉLECTION DE PLAGE ---
+        self.selection_mode = False
+        self.start_handle_pos = 0  # Position de la poignée de début (0-1000)
+        self.end_handle_pos = 1000   # Position de la poignée de fin (0-1000)
+        self.dragging_handle = None  # 'start', 'end', ou None
+        # --- FIN AJOUT ---
+        
         self.init_ui()
         
     def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        # --- AJOUT ---
+        self.setMouseTracking(True) # Pour détecter le survol des poignées
+        self.setMinimum(0)
+        self.setMaximum(1000)
+        self.setValue(0)
+        self.valueChanged.connect(self._on_value_changed)
+        self.setFixedHeight(30)
         
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(1000)
-        self.slider.setValue(0)
-        self.slider.valueChanged.connect(self._on_value_changed)
-        self.slider.setFixedHeight(30)
-        
-        self.slider.setStyleSheet("""
+        self.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: #2a2a2a;
                 height: 6px;
@@ -118,32 +124,107 @@ class VideoTimeline(QWidget):
             }
         """)
         
-        layout.addWidget(self.slider)
-        self.setLayout(layout)
-        
     def _on_value_changed(self, value):
         self.current_value = value
         self.update()
         self.position_changed.emit(value)
         
     def paintEvent(self, event):
+        # On demande au QSlider de se dessiner d'abord
         super().paintEvent(event)
+        
+        # Maintenant, on dessine nos poignées par-dessus
         
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        groove_rect = self.slider.geometry()
+        groove_rect = self.geometry()
         groove_y = groove_rect.height() // 2
         groove_left = 10
-        groove_right = self.slider.width() - 10
+        groove_right = self.width() - 10
         groove_width = groove_right - groove_left
-        
+
+        # Dessiner la plage de sélection si en mode sélection
+        if self.selection_mode and groove_width > 0:
+            start_x = groove_left + (self.start_handle_pos / 1000.0) * groove_width
+            end_x = groove_left + (self.end_handle_pos / 1000.0) * groove_width
+            
+            # Zone sélectionnée
+            selection_rect = QRect(int(start_x), groove_y - 4, int(end_x - start_x), 8)
+            painter.fillRect(selection_rect, QColor(33, 150, 243, 150)) # Bleu semi-transparent
+
+            # Poignée de début
+            painter.setPen(QPen(QColor("#FFFFFF"), 2))
+            painter.setBrush(QColor("#2196F3"))
+            start_handle_rect = QRect(int(start_x) - 5, groove_y - 10, 10, 20)
+            painter.drawRoundedRect(start_handle_rect, 3, 3)
+
+            # Poignée de fin
+            end_handle_rect = QRect(int(end_x) - 5, groove_y - 10, 10, 20)
+            painter.drawRoundedRect(end_handle_rect, 3, 3)
+
         for marker_pos in self.markers:
             x = groove_left + (marker_pos / 100.0) * groove_width
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(255, 0, 0))
             marker_rect = QRect(int(x - 2), groove_y - 3, 4, 6)
             painter.drawRect(marker_rect)
+
+    # --- AJOUT DES ÉVÉNEMENTS SOURIS ---
+    def mousePressEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+
+        if self.selection_mode:
+            pos_x = event.position().x()
+            groove_width = self.width() - 20
+            start_x = 10 + (self.start_handle_pos / 1000.0) * groove_width
+            end_x = 10 + (self.end_handle_pos / 1000.0) * groove_width
+
+            # Si on clique sur une poignée, on la capture et on arrête le traitement ici.
+            # Sinon, on laisse l'événement au QSlider parent pour qu'il gère le déplacement du rond.
+            if abs(pos_x - start_x) < 10:
+                self.dragging_handle = 'start'
+                return
+            elif abs(pos_x - end_x) < 10:
+                self.dragging_handle = 'end'
+                return
+        
+        # Si on n'est pas en mode sélection, ou si on n'a pas cliqué sur une poignée, on laisse le slider de base faire son travail.
+        super().mousePressEvent(event)
+        
+    def mouseMoveEvent(self, event):
+        if self.selection_mode and self.dragging_handle:
+            pos_x = event.position().x()
+            groove_width = self.width() - 20
+            new_pos = int(((pos_x - 10) / groove_width) * 1000)
+            new_pos = max(0, min(1000, new_pos)) # borner entre 0 et 1000
+
+            if self.dragging_handle == 'start':
+                self.start_handle_pos = min(new_pos, self.end_handle_pos)
+            elif self.dragging_handle == 'end':
+                self.end_handle_pos = max(new_pos, self.start_handle_pos)
+            
+            self.selection_changed.emit(self.start_handle_pos, self.end_handle_pos)
+            self.update() # Redessiner
+        elif self.selection_mode:
+            # Changer le curseur si on survole une poignée
+            pos_x = event.position().x()
+            groove_width = self.width() - 20
+            start_x = 10 + (self.start_handle_pos / 1000.0) * groove_width
+            end_x = 10 + (self.end_handle_pos / 1000.0) * groove_width
+            if abs(pos_x - start_x) < 10 or abs(pos_x - end_x) < 10:
+                self.setCursor(Qt.CursorShape.SizeHorCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.dragging_handle = None
+        super().mouseReleaseEvent(event)
+    # --- FIN AJOUT ---
         
     def add_marker(self, position):
         if 0 <= position <= 100:
@@ -155,10 +236,10 @@ class VideoTimeline(QWidget):
         self.update()
         
     def get_position(self):
-        return self.slider.value()
+        return self.value()
         
     def set_position(self, position):
-        self.slider.setValue(position)
+        self.setValue(position)
 
 
 class VideoControls(QWidget):
@@ -452,15 +533,16 @@ class VideoPlayer(QWidget):
         
         print("✅ Lecteur vidéo initialisé")
 
-    def load_video(self, file_path):
+    def load_video(self, file_path, autoplay=False):
         if not self._player_initialized:
             self.setup_player()
             
         url = QUrl.fromLocalFile(file_path)
         self.media_player.setSource(url)
         self.media_player.setPlaybackRate(self.playback_speed)
-        self.media_player.pause()
-        self.controls.update_play_pause_button(False)
+        if not autoplay:
+            self.media_player.pause()
+            self.controls.update_play_pause_button(False)
         
         print(f"📹 Vidéo chargée : {file_path}")
 
@@ -519,9 +601,9 @@ class VideoPlayer(QWidget):
 
         if self.duration > 0:
             slider_pos = int((position / self.duration) * 1000)
-            self.timeline.slider.blockSignals(True)
+            self.timeline.blockSignals(True)
             self.timeline.set_position(slider_pos)
-            self.timeline.slider.blockSignals(False)
+            self.timeline.blockSignals(False)
             
         self.position_changed.emit(position)
 

@@ -383,8 +383,58 @@ class ExtractionKosmosController(QObject):
             
     def on_recording(self):
         """Démarre/Arrête l'enregistrement d'un extrait"""
-        print("🔴 Enregistrement d'extrait activé/désactivé")
+        if not self.view or not self.model.video_selectionnee or not self.view.video_player.media_player:
+            self.view.show_message("Aucune vidéo sélectionnée.", "warning")
+            return
 
+        current_pos_ms = self.view.video_player.media_player.position()
+        duration_ms = self.view.video_player.duration
+
+        if duration_ms == 0:
+            self.view.show_message("La durée de la vidéo est inconnue.", "error")
+            return
+
+        # 1. Définir la plage de sélection initiale (position actuelle + 30s)
+        initial_start_ms = current_pos_ms
+        initial_end_ms = min(duration_ms, current_pos_ms + 30000)
+
+        # 2. Ouvrir la nouvelle fenêtre d'édition
+        from components.clip_editor_dialog import ClipEditorDialog
+        dialog = ClipEditorDialog(
+            self.model.video_selectionnee.chemin,
+            initial_start_ms,
+            initial_end_ms,
+            self.view
+        )
+        
+        accepted = dialog.exec()
+
+        # 3. Si l'utilisateur a validé, créer l'extrait final
+        if not accepted:
+            self.view.show_message("Enregistrement annulé.", "info")
+            return
+
+        try:
+            rec_name, final_start_ms, final_end_ms = dialog.get_values()
+            
+            final_start_str = str(datetime.timedelta(milliseconds=final_start_ms))
+            final_duration_s = (final_end_ms - final_start_ms) / 1000
+
+            recordings_dir = Path(self.model.campagne_courante.workspace_extraction) / "recordings"
+            recordings_dir.mkdir(parents=True, exist_ok=True)
+            final_output_path = recordings_dir / f"{rec_name}.mp4"
+
+            self.view.show_message("Enregistrement de l'extrait final...", "info")
+            cmd_final = [
+                'ffmpeg', '-ss', final_start_str, '-i', self.model.video_selectionnee.chemin,
+                '-t', str(final_duration_s), '-c', 'copy', '-y', str(final_output_path)
+            ]
+            subprocess.run(cmd_final, check=True, capture_output=True, text=True)
+            self.view.show_message(f"Enregistrement '{rec_name}.mp4' sauvegardé !", "success")
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            error_msg = e.stderr if isinstance(e, subprocess.CalledProcessError) else "ffmpeg non trouvé."
+            self.view.show_message(f"Erreur enregistrement final: {error_msg}", "error")
+                    
     def on_create_short(self):
         """Crée un short (extrait court format vertical ou spécifique)"""
         if not self.view or not self.model.video_selectionnee:
