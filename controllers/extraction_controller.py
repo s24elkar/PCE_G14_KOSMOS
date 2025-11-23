@@ -423,10 +423,11 @@ class ExtractionKosmosController(QObject):
                 '-ss', start_time_str,
                 '-i', self.model.video_selectionnee.chemin,
                 '-t', str(clip_duration_s),
-                '-vf', 'setpts=0.5*PTS',  # Accélère la vidéo x2
+                # Filtre pour format vertical 9:16 + accélération
+                '-vf', 'crop=ih*9/16:ih,scale=720:1280,setpts=0.5*PTS',
                 '-af', 'atempo=2.0',      # Accélère l'audio x2
                 '-preset', 'ultrafast',  # Encodage très rapide
-                '-crf', '28',            # Qualité plus basse pour la vitesse
+                '-crf', '28',            # Qualité plus basse pour la vitesse,
                 '-y', str(temp_preview_path)
             ]
             subprocess.run(cmd_preview, check=True, capture_output=True, text=True)
@@ -459,7 +460,8 @@ class ExtractionKosmosController(QObject):
                         '-ss', start_time_str,
                         '-i', self.model.video_selectionnee.chemin,
                         '-t', str(clip_duration_s),
-                        '-c', 'copy',  # Copie les flux sans ré-encoder (très rapide)
+                    # Filtre pour format vertical 9:16
+                    '-vf', 'crop=ih*9/16:ih,scale=720:1280',
                         '-y', str(final_output_path)
                     ]
                     subprocess.run(cmd_final, check=True, capture_output=True, text=True)
