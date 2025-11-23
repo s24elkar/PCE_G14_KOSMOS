@@ -19,8 +19,10 @@ class DetachedPlayerWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 700)
         self.setStyleSheet("background-color: black;")
         
-        # Rendre la fenêtre toujours au premier plan (optionnel)
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
+        # Rendre la fenêtre indépendante et non modale.
+        # Qt.WindowType.Window crée une fenêtre de premier niveau.
+        # Ne pas mettre de parent à la création et ne pas utiliser WindowStaysOnTopHint.
+        self.setWindowFlags(Qt.WindowType.Window)
         
         # Widget central
         central_widget = QWidget()

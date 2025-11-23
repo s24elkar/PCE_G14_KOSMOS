@@ -6,6 +6,7 @@ Gère la logique de la page d'extraction (lecture, navigation, outils)
 import datetime
 import json
 import sys
+import subprocess
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QInputDialog
@@ -227,7 +228,7 @@ class ExtractionKosmosController(QObject):
         video_player.setParent(None)
         
         # Créer la fenêtre détachée
-        self.detached_window = DetachedPlayerWindow(video_player, self.view)
+        self.detached_window = DetachedPlayerWindow(video_player, parent=None)
         self.detached_window.closed.connect(self.on_reattach_player)
         self.detached_window.show()
         
@@ -354,15 +355,15 @@ class ExtractionKosmosController(QObject):
             return
 
         # 2. Définir le chemin de sauvegarde
-        save_dir = Path(self.model.campagne_courante.emplacement)
+        save_dir = Path(self.model.campagne_courante.workspace_extraction)
         
         if not save_dir:
-            self.view.show_message("Emplacement de la campagne non défini.", "error")
+            self.view.show_message("Dossier d'extraction non défini pour la campagne.", "error")
             return
 
         # Créer un sous-dossier "captures" pour une meilleure organisation
         captures_dir = save_dir / "captures"
-        captures_dir.mkdir(exist_ok=True)
+        captures_dir.mkdir(parents=True, exist_ok=True)
 
         # 3. Utiliser le nom fourni par l'utilisateur
         filename = f"{self.pending_capture_name}.jpg"
@@ -386,7 +387,98 @@ class ExtractionKosmosController(QObject):
 
     def on_create_short(self):
         """Crée un short (extrait court format vertical ou spécifique)"""
-        print("📱 Création de short demandée")
+        if not self.view or not self.model.video_selectionnee:
+            self.view.show_message("Aucune vidéo sélectionnée.", "warning")
+            return
+
+        # 1. Obtenir la position actuelle et la durée totale
+        player = self.view.video_player
+        current_pos_ms = player.media_player.position()
+        total_duration_ms = player.duration
+
+        if total_duration_ms == 0:
+            self.view.show_message("La durée de la vidéo est inconnue.", "error")
+            return
+
+        # 2. Calculer les temps de début et de fin (15s avant, 15s après)
+        start_ms = max(0, current_pos_ms - 15000)
+        end_ms = min(total_duration_ms, current_pos_ms + 15000)
+        clip_duration_s = (end_ms - start_ms) / 1000
+
+        # Convertir en format HH:MM:SS.ms pour ffmpeg
+        start_time_str = str(datetime.timedelta(milliseconds=start_ms))
+
+        # 3. Définir les chemins temporaires
+        extraction_dir = Path(self.model.campagne_courante.workspace_extraction)
+        shorts_dir = extraction_dir / "shorts"
+        shorts_dir.mkdir(parents=True, exist_ok=True)
+        temp_preview_path = shorts_dir / f"~preview_temp.mp4"
+
+        # 5. Créer un aperçu accéléré avec ffmpeg
+        try:
+            self.view.show_message("Création de l'aperçu...", "info")
+            # Commande ffmpeg pour créer un aperçu x2, basse qualité
+            cmd_preview = [
+                'ffmpeg',
+                '-ss', start_time_str,
+                '-i', self.model.video_selectionnee.chemin,
+                '-t', str(clip_duration_s),
+                '-vf', 'setpts=0.5*PTS',  # Accélère la vidéo x2
+                '-af', 'atempo=2.0',      # Accélère l'audio x2
+                '-preset', 'ultrafast',  # Encodage très rapide
+                '-crf', '28',            # Qualité plus basse pour la vitesse
+                '-y', str(temp_preview_path)
+            ]
+            subprocess.run(cmd_preview, check=True, capture_output=True, text=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            error_msg = e.stderr if isinstance(e, subprocess.CalledProcessError) else "ffmpeg non trouvé."
+            self.view.show_message(f"Erreur création aperçu: {error_msg}", "error")
+            return
+
+        # 6. Afficher la boîte de dialogue d'aperçu
+        from components.short_preview_dialog import ShortPreviewDialog
+        preview_dialog = ShortPreviewDialog(str(temp_preview_path), self.view)
+        
+        accepted = preview_dialog.exec()
+
+        try:
+            # 7. Si l'utilisateur a cliqué sur "Enregistrer" et entré un nom
+            if accepted:
+                short_name = preview_dialog.get_short_name()
+
+                try:
+                    if not short_name:
+                        self.view.show_message("Enregistrement annulé : nom vide.", "warning")
+                        return # Ce return est maintenant à l'intérieur du try...except, donc le finally sera appelé.
+
+                    self.view.show_message("Enregistrement du short final...", "info")
+                    final_output_path = shorts_dir / f"{short_name}.mp4"
+                    # Commande ffmpeg pour créer le clip final en qualité originale
+                    cmd_final = [
+                        'ffmpeg',
+                        '-ss', start_time_str,
+                        '-i', self.model.video_selectionnee.chemin,
+                        '-t', str(clip_duration_s),
+                        '-c', 'copy',  # Copie les flux sans ré-encoder (très rapide)
+                        '-y', str(final_output_path)
+                    ]
+                    subprocess.run(cmd_final, check=True, capture_output=True, text=True)
+                    self.view.show_message(f"Short '{short_name}.mp4' enregistré !", "success")
+                except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                    error_msg = e.stderr if isinstance(e, subprocess.CalledProcessError) else "ffmpeg non trouvé."
+                    self.view.show_message(f"Erreur enregistrement final: {error_msg}", "error")
+
+            else:
+                self.view.show_message("Enregistrement annulé.", "info")
+
+        finally:
+            # 8. Nettoyer le fichier d'aperçu temporaire dans tous les cas
+            if temp_preview_path.exists():
+                try:
+                    temp_preview_path.unlink()
+                    print("🗑️ Fichier d'aperçu temporaire supprimé.")
+                except OSError as e:
+                    print(f"❌ Erreur suppression fichier temporaire: {e}")
 
     def on_crop(self):
         """Active l'outil de recadrage"""
