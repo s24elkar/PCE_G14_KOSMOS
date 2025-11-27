@@ -55,59 +55,46 @@ class HistogramWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Fond gris
-        painter.fillRect(self.rect(), QColor(70, 70, 70))
+        # Fond dégradé sombre
+        painter.fillRect(self.rect(), QColor(12, 18, 32))
         
         # Dimensions
         width = self.width()
         height = self.height() - 30  # Réserver de l'espace pour les labels
         
-        # Dessiner la grille
-        painter.setPen(QPen(QColor(90, 90, 90), 1))
+        # Grille légère
+        painter.setPen(QPen(QColor(32, 46, 70), 1))
         for i in range(0, width, 50):
             painter.drawLine(i, 0, i, height)
         for i in range(0, height, 40):
             painter.drawLine(0, i, width, i)
         
-        # Fonction pour dessiner une courbe
-        def draw_curve(data, color, alpha=180):
+        # Fonction pour dessiner des barres semi-transparentes
+        def draw_bars(data, color, alpha_fill=80, alpha_line=180):
             if not data:
                 return
             
-            points = []
-            step = width / len(data)
+            step = max(1, int(width / max(1, len(data))))
             max_value = max(data) if data else 1
-            
+
+            fill_color = QColor(color)
+            fill_color.setAlpha(alpha_fill)
+            pen_color = QColor(color)
+            pen_color.setAlpha(alpha_line)
+            painter.setPen(QPen(pen_color, 1))
+            painter.setBrush(fill_color)
+
             for i, value in enumerate(data):
                 x = int(i * step)
-                y = height - int((value / max_value) * height)
-                points.append(QPoint(x, y))
-            
-            if len(points) > 1:
-                # Créer un polygone pour remplir sous la courbe
-                fill_points = [QPoint(0, height)] + points + [QPoint(width, height)]
-                polygon = QPolygon(fill_points)
-                
-                # Remplissage avec transparence
-                fill_color = QColor(color)
-                fill_color.setAlpha(alpha // 3)
-                painter.setBrush(fill_color)
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.drawPolygon(polygon)
-                
-                # Dessiner la ligne
-                pen_color = QColor(color)
-                pen_color.setAlpha(alpha)
-                painter.setPen(QPen(pen_color, 2))
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                for i in range(len(points) - 1):
-                    painter.drawLine(points[i], points[i + 1])
+                bar_height = int((value / max_value) * height)
+                bar_rect = QRect(x, height - bar_height, int(step * 0.9), bar_height)
+                painter.drawRect(bar_rect)
         
-        # Dessiner les courbes RGB avec mélange
-        draw_curve(self.data_density, "#FFFFFF", 180)  # Courbe blanche (densité)
-        draw_curve(self.data_r, "#FF1744", 150)      # Rouge
-        draw_curve(self.data_g, "#00E676", 150)      # Vert
-        draw_curve(self.data_b, "#2979FF", 150)      # Bleu
+        # Dessiner les barres (densité en fond, puis RVB)
+        draw_bars(self.data_density, "#FFFFFF", alpha_fill=40, alpha_line=120)
+        draw_bars(self.data_r, "#EF4444", alpha_fill=70, alpha_line=180)      # Rouge
+        draw_bars(self.data_g, "#22C55E", alpha_fill=70, alpha_line=180)      # Vert
+        draw_bars(self.data_b, "#3B82F6", alpha_fill=70, alpha_line=180)      # Bleu
         
         # Triangle rouge en haut à droite
         triangle_size = 15
@@ -149,12 +136,12 @@ class Histogram(QWidget):
         header.setFixedHeight(40)  # Hauteur fixe
         header.setStyleSheet("""
             QLabel {
-                background-color: white;
-                color: black;
+                background-color: #111827;
+                color: #e5e7eb;
                 font-size: 14px;
-                font-weight: bold;
+                font-weight: 700;
                 padding: 8px;
-                border-bottom: 1px solid #ddd;
+                border-bottom: 1px solid #1f2937;
             }
         """)
         main_layout.addWidget(header)
@@ -168,7 +155,7 @@ class Histogram(QWidget):
         container_layout.setContentsMargins(10, 10, 10, 10)
         container_layout.addWidget(self.histogram_widget)
         container.setLayout(container_layout)
-        container.setStyleSheet("background-color: black;")
+        container.setStyleSheet("background-color: transparent;")
         
         main_layout.addWidget(container)
         
@@ -176,8 +163,8 @@ class Histogram(QWidget):
         self.setObjectName("Histogram")
         self.setStyleSheet("""
             #Histogram {
-                background-color: black;
-                border: 2px solid white;
+                background-color: transparent;
+                font-family: 'Montserrat', 'Segoe UI', sans-serif;
             }
         """)
         

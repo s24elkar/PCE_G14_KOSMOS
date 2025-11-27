@@ -7,6 +7,18 @@ from typing import Iterable, List, Optional
 
 SUPPORTED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
+# Valeurs par défaut pour les corrections d'image.
+DEFAULT_CORRECTIONS: dict[str, int] = {
+    "contrast": 0,
+    "brightness": 0,
+    "saturation": 0,
+    "hue": 0,
+    "temperature": 0,
+    "sharpness": 0,
+    "gamma": 0,
+    "denoise": 0,
+}
+
 
 @dataclass(slots=True)
 class MediaItem:
@@ -34,7 +46,7 @@ class MediaModel:
         self._videos: List[MediaItem] = []
         self._selected_index: Optional[int] = None
         self._playback_position: int = 0  # 0-1000 range (mirrors the timeline widget)
-        self._corrections: dict[str, int] = {"contrast": 0, "brightness": 0}
+        self._corrections: dict[str, int] = dict(DEFAULT_CORRECTIONS)
         self._corrections_history: list[dict[str, int]] = []
         self.action_log: List[str] = []
 
@@ -151,7 +163,7 @@ class MediaModel:
     def reset_corrections(self) -> dict[str, int]:
         """Reset contrast/brightness and keep history so undo stays consistent."""
         self._corrections_history.append(dict(self._corrections))
-        self._corrections = {"contrast": 0, "brightness": 0}
+        self._corrections = dict(DEFAULT_CORRECTIONS)
         return self.get_corrections()
 
     def undo_last_correction(self) -> dict[str, int]:

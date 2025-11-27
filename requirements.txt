@@ -9,3 +9,10 @@ pandas>=2.0,<3
 pytest>=7.4,<8
 imageio>=2.31,<3
 imageio-ffmpeg>=0.4,<0.5
+# Pins explicites pour éviter les variantes +cpu introuvables
+torch==2.4.1
+torchvision==0.19.1
+# Albumentations 1.3.1 évite la dépendance stringzilla sans roue Windows
+albumentations==1.3.1
+segmentation-models-pytorch==0.3.3
+tqdm>=4.66,<5

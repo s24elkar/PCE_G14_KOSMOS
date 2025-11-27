@@ -16,14 +16,25 @@ from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout, QPushButton,QDialogButtonBox,QDialog,QComboBox,
                              QFileDialog, QSlider, QHBoxLayout, QLineEdit,QTabWidget, QMessageBox,QLineEdit,QToolButton,QTextEdit,
                              QCheckBox,QStyle,QProgressBar,QListWidget,QGridLayout,QStyleOptionSlider,QStyle, QInputDialog,QLayout,
-                             QTreeWidget, QTreeWidgetItem)
+                             QTreeWidget, QTreeWidgetItem, QMainWindow)
 from PyQt6.QtCore import Qt, QTimer, QDir, QFileInfo, QRect, QPoint,QEvent,QSize
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QGuiApplication,QPaintEvent, QBrush, QKeyEvent
-import pyqtgraph as pg
+try:
+    import pyqtgraph as pg
+except Exception as exc:
+    pg = None
+    print(f"⚠️ pyqtgraph indisponible (non bloquant pour l'UI extraction): {exc}")
 
 import pandas as pd
 
-from AlgosCorrection import *
+# Nouvelle UI (vue Extraction + contrôleur)
+from controllers.extraction_controller import ExtractionController
+from models.media_model import MediaModel
+from models.campaign_model import CampaignModel
+from views.vue_extraction import ExtractionView
+
+# Algorithmes de correction (déplacés dans kosmos_processing)
+from kosmos_processing.algos_correction import *
 
 from shutil import copy
 import json
@@ -1393,12 +1404,24 @@ class VideoPlayer(QWidget):
 
 ###############################################################################            
 # Main
-            
-if __name__ == '__main__':
+def launch_new_extraction_ui() -> int:
+    """
+    Point d'entrée vers la nouvelle interface extraction (design refondu).
+    """
     app = QApplication(sys.argv)
-    player = VideoPlayer()
-    player.show()
-    sys.exit(app.exec())
-    
+    model = MediaModel()
+    campaign_model = CampaignModel()
+    view = ExtractionView()
+    ExtractionController(view, model, campaign_model)
 
+    window = QMainWindow()
+    window.setWindowTitle("Kosmos - Extraction sous-marine")
+    window.setCentralWidget(view)
+    window.resize(1600, 900)
+    window.show()
+    return app.exec()
+
+
+if __name__ == '__main__':
+    sys.exit(launch_new_extraction_ui())
 

@@ -30,7 +30,13 @@ def test_extraction_view_initialises_components(qapp):
     view.image_correction.brightness_slider.set_value(-5)
 
     corrections = view.get_correction_values()
-    assert corrections == {"contrast": 15, "brightness": -5}
+    assert corrections["contrast"] == 15
+    assert corrections["brightness"] == -5
+    # Les autres corrections avancées existent et restent à 0 par défaut
+    for key in ("saturation", "hue", "temperature", "sharpness", "gamma", "denoise"):
+        assert corrections.get(key) == 0
 
     view.reset_corrections()
-    assert view.get_correction_values() == {"contrast": 0, "brightness": 0}
+    reset = view.get_correction_values()
+    assert reset["contrast"] == 0
+    assert reset["brightness"] == 0

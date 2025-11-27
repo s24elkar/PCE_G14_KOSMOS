@@ -22,22 +22,24 @@ class ExtractionButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet("""
             QPushButton {
-                background-color: black;
-                color: white;
-                border: 2px solid white;
-                border-radius: 8px;
+                background-color: #111827;
+                color: #e5e7eb;
+                border: 1px solid #1f2937;
+                border-radius: 10px;
                 padding: 10px 15px;
                 text-align: left;
                 font-size: 14px;
-                font-weight: 500;
+                font-weight: 600;
                 font-family: 'Montserrat';
             }
             QPushButton:hover {
-                background-color: #1a1a1a;
-                border-color: #2196F3;
+                background-color: #0ea5e9;
+                color: #0b1220;
+                border-color: #38bdf8;
             }
             QPushButton:pressed {
-                background-color: #0d0d0d;
+                background-color: #0b6aa5;
+                color: #e5e7eb;
             }
         """)
 
@@ -69,12 +71,12 @@ class ExtractionTools(QWidget):
         header.setStyleSheet("""
             QLabel {
                 text-align: center;
-                background-color: white;
-                color: black;
+                background-color: #111827;
+                color: #e5e7eb;
                 font-size: 14px;
-                font-weight: bold;
+                font-weight: 700;
                 padding: 10px;
-                border-bottom: 2px solid #ddd;
+                border-bottom: 1px solid #1f2937;
             }
         """)
         main_layout.addWidget(header)
@@ -108,16 +110,15 @@ class ExtractionTools(QWidget):
         buttons_layout.addStretch()
         
         buttons_container.setLayout(buttons_layout)
-        buttons_container.setStyleSheet("background-color: black;")
+        buttons_container.setStyleSheet("background-color: transparent;")
         
         main_layout.addWidget(buttons_container)
         
         self.setLayout(main_layout)
         self.setStyleSheet("""
             QWidget {
-                background-color: black;
-                border: 2px solid white;
-                font-family: 'Montserrat';
+                background-color: transparent;
+                font-family: 'Montserrat', 'Segoe UI', sans-serif;
             }
         """)
 

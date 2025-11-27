@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from controllers import ExtractionController
+from models.campaign_model import CampaignModel
 from models.media_model import MediaModel
 from views.extraction_view import ExtractionView
 
@@ -42,7 +43,16 @@ def test_controller_updates_corrections_and_actions(qapp, tmp_path):
 
     controller.on_contrast_changed(20)
     controller.on_brightness_changed(-5)
-    assert model.get_corrections() == {"contrast": 20, "brightness": -5}
+    assert model.get_corrections() == {
+        "contrast": 20,
+        "brightness": -5,
+        "saturation": 0,
+        "hue": 0,
+        "temperature": 0,
+        "sharpness": 0,
+        "gamma": 0,
+        "denoise": 0,
+    }
 
     controller.on_screenshot()
     controller.on_play_pause()
@@ -86,5 +96,59 @@ def test_controller_undo_restores_previous_corrections(qapp, tmp_path):
 
     controller.on_undo_correction()
 
-    assert model.get_corrections() == {"contrast": 30, "brightness": -10}
-    assert view.get_correction_values() == {"contrast": 30, "brightness": -10}
+    assert model.get_corrections() == {
+        "contrast": 30,
+        "brightness": -10,
+        "saturation": 0,
+        "hue": 0,
+        "temperature": 0,
+        "sharpness": 0,
+        "gamma": 0,
+        "denoise": 0,
+    }
+    assert view.get_correction_values() == {
+        "contrast": 30,
+        "brightness": -10,
+        "saturation": 0,
+        "hue": 0,
+        "temperature": 0,
+        "sharpness": 0,
+        "gamma": 0,
+        "denoise": 0,
+    }
+
+
+def test_controller_autoloads_last_opened_campaign(qapp, tmp_path):
+    campaigns_root = tmp_path / "campaigns"
+    campaigns_root.mkdir()
+
+    mission_dir = campaigns_root / "Mission-Atlantique"
+    mission_dir.mkdir()
+    (mission_dir / "video1.mp4").write_bytes(b"fake")
+
+    campaign_model = CampaignModel(default_root=campaigns_root)
+    campaign_model.add_campaign("Mission-Atlantique")
+    campaign_model.open_campaign("Mission-Atlantique")
+
+    model = MediaModel()
+    view = ExtractionView()
+    controller = ExtractionController(view, model, campaign_model=campaign_model)
+
+    assert model.current_directory == mission_dir
+    assert model.videos, "Les vidéos de la campagne devraient être chargées."
+
+
+def test_toggle_metadata_button_hides_and_shows_overlay(qapp, tmp_path):
+    _create_media(tmp_path, ["clip.mp4"])
+
+    model = MediaModel()
+    view = ExtractionView()
+    controller = ExtractionController(view, model)
+    controller.load_directory(tmp_path)
+
+    # initial state: visible
+    assert view.video_player.metadata_is_visible() is True
+    view.metadata_toggle_btn.click()
+    assert view.video_player.metadata_is_visible() is False
+    view.metadata_toggle_btn.click()
+    assert view.video_player.metadata_is_visible() is True

@@ -65,6 +65,13 @@ class ApercuVideos(QWidget):
 
     def charger_videos(self):
         """Charge les 6 premières vidéos trouvées dans le dossier."""
+        # Nettoie la grille avant de recharger (évite les doublons visuels)
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
         fichiers = [f for f in os.listdir(self.dossier_videos) if f.lower().endswith((".mp4", ".avi", ".mov"))]
         fichiers = fichiers[:6]
         self.videos = fichiers
@@ -76,11 +83,16 @@ class ApercuVideos(QWidget):
             pixmap = QPixmap("placeholder.jpg")  # image par défaut (miniature à remplacer si tu en as)
             pixmap = pixmap.scaled(QSize(200, 120), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             label.setPixmap(pixmap)
+            label.setToolTip(fichier)
             label.setStyleSheet("border: 2px solid gray;")
             label.setCursor(Qt.CursorShape.PointingHandCursor)
             label.mousePressEvent = lambda event, chemin=chemin: self.selectionner_video(chemin)
 
             self.grid.addWidget(label, i // 3, i % 3)
+
+        # Sélection par défaut de la première vidéo si disponible
+        if fichiers:
+            self.selectionner_video(os.path.join(self.dossier_videos, fichiers[0]))
 
     def selectionner_video(self, chemin):
         """Affiche la vidéo sélectionnée dans le lecteur."""

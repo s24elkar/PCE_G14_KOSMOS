@@ -1,10 +1,12 @@
 """
-Composant NavBar réutilisable 
+Composant NavBar réutilisable
 """
 import sys
 from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPalette, QColor, QFontDatabase
+
+from components.commons import COLORS, FONTS, SPACING
 
 
 class NavBar(QWidget):
@@ -47,7 +49,7 @@ class NavBar(QWidget):
         """Initialise l'interface utilisateur"""
         # Layout principal horizontal
         layout = QHBoxLayout()
-        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setContentsMargins(SPACING["lg"], 0, SPACING["lg"], 0)
         layout.setSpacing(0)
         
         # Créer les boutons de navigation
@@ -61,28 +63,29 @@ class NavBar(QWidget):
         layout.addStretch()
         
         # Bouton de réduction
-        minimize_btn = self.create_control_button("─", self.minimize_window, "#e0e0e0")
+        minimize_btn = self.create_control_button("─", self.minimize_window, COLORS["text_secondary"])
         layout.addWidget(minimize_btn)
         
         # Bouton de maximisation/restauration
-        self.maximize_btn = self.create_control_button("□", self.toggle_maximize, "#e0e0e0")
+        self.maximize_btn = self.create_control_button("□", self.toggle_maximize, COLORS["text_secondary"])
         layout.addWidget(self.maximize_btn)
         
         # Bouton de fermeture
-        close_btn = self.create_control_button("✕", self.close_window, "#ff4444")
+        close_btn = self.create_control_button("✕", self.close_window, COLORS["danger"])
         layout.addWidget(close_btn)
         
         self.setLayout(layout)
         
-        # Style de la barre de navigation - FOND BLANC
-        self.setStyleSheet("""
-            QWidget {
-                background-color: white;
-                border-bottom: 1px solid #e0e0e0;
-                font-family: 'Montserrat';
-            }
-        """)
-        self.setFixedHeight(50)
+        # Style de la barre de navigation - thème sombre cohérent
+        self.setStyleSheet(
+            f"QWidget {{"
+            f"background-color: {COLORS['bg_secondary']};"
+            f"border-bottom: 1px solid {COLORS['border']};"
+            f"font-family: '{FONTS['primary']}';"
+            f"color: {COLORS['text_primary']};"
+            f"}}"
+        )
+        self.setFixedHeight(54)
     
     def create_nav_button(self, text, is_active=False):
         """
@@ -99,49 +102,30 @@ class NavBar(QWidget):
         btn.setCheckable(True)
         btn.setChecked(is_active)
         
-        # Style pour les boutons
-        if is_active:
-            style = """
-                QPushButton {
-                    background-color: #1DA1FF;
-                    color: white;
-                    border: none;
-                    padding: 8px 20px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    margin: 0px 2px;
-                    border-radius: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #1E88E5;
-                }
-            """
-        else:
-            style = """
-                QPushButton {
-                    background-color: transparent;
-                    color: black;
-                    border: none;
-                    padding: 8px 20px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    margin: 0px 2px;
-                    border-radius: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #f5f5f5;
-                }
-                QPushButton:checked {
-                    background-color: #2196F3;
-                    color: white;
-                }
-            """
-        
-        btn.setStyleSheet(style)
+        btn.setStyleSheet(self._nav_button_style(is_active))
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.clicked.connect(lambda: self.on_tab_clicked(btn))
         
         return btn
+
+    def _nav_button_style(self, active: bool) -> str:
+        """Style uniforme pour les onglets."""
+        return (
+            f"QPushButton {{"
+            f"background-color: {COLORS['accent_cyan'] if active else 'transparent'};"
+            f"color: {COLORS['bg_primary'] if active else COLORS['text_primary']};"
+            f"border: none;"
+            f"padding: 10px 16px;"
+            f"font-size: {FONTS['sizes']['base']}px;"
+            f"font-weight: 700;"
+            f"margin: 0px 4px;"
+            f"border-radius: 10px;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"background-color: {COLORS['accent_cyan_light'] if active else COLORS['bg_tertiary']};"
+            f"color: {COLORS['bg_primary'] if active else COLORS['text_primary']};"
+            f"}}"
+        )
     
     def create_control_button(self, text, callback, hover_color):
         """
@@ -158,33 +142,23 @@ class NavBar(QWidget):
         btn = QPushButton(text)
         btn.setFixedSize(40, 40)
         
-        if hover_color == "#ff4444":  # Bouton fermer
-            style = f"""
-                QPushButton {{
-                    background-color: transparent;
-                    border: none;
-                    color: #333;
-                    font-size: 20px;
-                    font-weight: normal;
-                }}
-                QPushButton:hover {{
-                    background-color: {hover_color};
-                    color: white;
-                }}
-            """
-        else:
-            style = f"""
-                QPushButton {{
-                    background-color: transparent;
-                    border: none;
-                    color: #333;
-                    font-size: 18px;
-                    font-weight: normal;
-                }}
-                QPushButton:hover {{
-                    background-color: {hover_color};
-                }}
-            """
+        danger = hover_color == COLORS["danger"]
+        fg = COLORS["text_primary"]
+        style = (
+            f"QPushButton {{"
+            f"background-color: transparent;"
+            f"border: none;"
+            f"color: {fg};"
+            f"font-size: {FONTS['sizes']['lg']}px;"
+            f"font-weight: 600;"
+            f"border-radius: 8px;"
+            f"padding: 6px;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"background-color: {hover_color};"
+            f"color: {COLORS['bg_primary'] if danger else COLORS['bg_primary']};"
+            f"}}"
+        )
         
         btn.setStyleSheet(style)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -199,47 +173,10 @@ class NavBar(QWidget):
         Args:
             clicked_btn: Le bouton cliqué
         """
-        # Décocher tous les autres boutons
         for btn in self.tab_buttons.values():
-            if btn != clicked_btn:
-                btn.setChecked(False)
-                btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: transparent;
-                        color: #333;
-                        border: none;
-                        padding: 8px 20px;
-                        font-size: 14px;
-                        font-weight: 500;
-                        margin: 0px 2px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #f5f5f5;
-                    }
-                    QPushButton:checked {
-                        background-color: #2196F3;
-                        color: white;
-                    }
-                """)
-        
-        # Activer le bouton cliqué
-        clicked_btn.setChecked(True)
-        clicked_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1DA1FF;
-                color: white;
-                border: none;
-                padding: 8px 20px;
-                font-size: 14px;
-                font-weight: 500;
-                margin: 0px 2px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #1E88E5;
-            }
-        """)
+            is_active = btn is clicked_btn
+            btn.setChecked(is_active)
+            btn.setStyleSheet(self._nav_button_style(is_active))
         
         # Émettre le signal avec le nom de l'onglet
         tab_name = clicked_btn.text()
