@@ -141,4 +141,3 @@ class ModernVideoPlayer(QWidget):
         self.metadata_toggle_btn.setToolTip(
             "Masquer l'overlay métadonnées (M)" if visible else "Afficher l'overlay métadonnées (M)"
         )
-

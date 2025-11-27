@@ -343,6 +343,10 @@ class ExtractionView(QWidget):
                     self.image_correction.denoise_changed.connect(
                         self.controller.on_denoise_changed
                     )
+                if hasattr(self.image_correction, 'curve_changed') and hasattr(self.controller, 'on_curve_changed'):
+                    self.image_correction.curve_changed.connect(
+                        self.controller.on_curve_changed
+                    )
             
             # ────────────────────────────────────────────────────────────
             # Signaux du LECTEUR VIDÉO
@@ -520,7 +524,7 @@ class ExtractionView(QWidget):
                 denoise=corrections.get('denoise', 0),
             )
 
-    def apply_corrections_to_preview(self, corrections: dict[str, int]):
+    def apply_corrections_to_preview(self, corrections: dict[str, int], curve_lut: list[int] | None = None):
         """
         Applique visuellement les corrections sur l'aperçu vidéo et l'histogramme.
         Cela reste un effet de prévisualisation (pas de traitement vidéo en temps réel).
@@ -535,10 +539,13 @@ class ExtractionView(QWidget):
                 sharpness=corrections.get('sharpness', 0),
                 gamma=corrections.get('gamma', 0),
                 denoise=corrections.get('denoise', 0),
+                curve_lut=curve_lut,
             )
 
         if hasattr(self, 'histogram'):
             payload = self._build_histogram_payload(corrections)
+            if curve_lut:
+                payload = self._apply_curve_to_payload(payload, curve_lut)
             self.update_histogram(payload)
 
     def _build_histogram_payload(self, corrections: dict[str, int]) -> dict:
@@ -560,6 +567,32 @@ class ExtractionView(QWidget):
         blue = scaled(-20)
         density = [int((r + g + b) / 3) for r, g, b in zip(red, green, blue)]
         return {'data_r': red, 'data_g': green, 'data_b': blue, 'data_density': density}
+
+    def _apply_curve_to_payload(self, payload: dict, curve_lut: list[int]) -> dict:
+        """Applique la LUT au payload d'histogramme pour prévisualiser la courbe."""
+        if not curve_lut or len(curve_lut) < 256:
+            return payload
+        lut = [max(0, min(255, int(v))) for v in curve_lut[:256]]
+
+        def remap(data: list[int]) -> list[int]:
+            if not data:
+                return data
+            out = []
+            max_val = max(data) if data else 1
+            for idx, val in enumerate(data):
+                # normaliser sur 0..255 pour indexer la LUT de manière simple
+                normalized = int(idx / max(1, len(data) - 1) * 255)
+                mapped = lut[normalized]
+                # préserver l'amplitude originale
+                out.append(int(mapped / 255 * val if max_val else 0))
+            return out
+
+        return {
+            "data_r": remap(payload.get("data_r", [])),
+            "data_g": remap(payload.get("data_g", [])),
+            "data_b": remap(payload.get("data_b", [])),
+            "data_density": remap(payload.get("data_density", [])),
+        }
 
 
 # ============================================================

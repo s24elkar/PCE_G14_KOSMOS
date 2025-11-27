@@ -27,6 +27,7 @@ class AdvancedCorrection(QWidget):
     sharpness_changed = pyqtSignal(int)
     gamma_changed = pyqtSignal(int)
     denoise_changed = pyqtSignal(int)
+    curve_changed = pyqtSignal(list)
     apply_clicked = pyqtSignal()
     undo_clicked = pyqtSignal()
     preset_selected = pyqtSignal(dict)
@@ -96,6 +97,8 @@ class AdvancedCorrection(QWidget):
         self.base.denoise_changed.connect(self.denoise_changed.emit)
         self.base.apply_clicked.connect(self.apply_clicked.emit)
         self.base.undo_clicked.connect(self.undo_clicked.emit)
+        if hasattr(self.base, "curve_changed"):
+            self.base.curve_changed.connect(self.curve_changed.emit)
 
     # ------------------------------------------------------------------ #
     # API publique

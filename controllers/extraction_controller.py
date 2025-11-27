@@ -36,6 +36,7 @@ class ExtractionController:
         self._current_duration: float = 0.0
         self._last_histogram_ts: float = 0.0
         self._last_export_range: tuple[int, int] | None = None
+        self._curve_lut: list[int] | None = None
 
         # Make sure the view knows about its controller and signals are bound.
         self.view.controller = self
@@ -192,6 +193,14 @@ class ExtractionController:
         self._push_corrections_to_view()
         self.model.record_action("preset_correction")
 
+    def on_curve_changed(self, lut: list[int]) -> None:
+        """
+        Réagit aux modifications de courbe avancée (non stockée dans le modèle).
+        """
+        self._curve_lut = lut or None
+        if hasattr(self.view, "apply_corrections_to_preview"):
+            self.view.apply_corrections_to_preview(self.model.get_corrections(), curve_lut=self._curve_lut)
+
     def on_play_pause(self) -> None:
         self.model.record_action("play_pause")
 
@@ -287,10 +296,13 @@ class ExtractionController:
         """Envoie les corrections courantes vers l'aperçu/histogramme."""
         corrections = self.model.get_corrections()
         if hasattr(self.view, "apply_corrections_to_preview"):
-            self.view.apply_corrections_to_preview(corrections)
+            self.view.apply_corrections_to_preview(corrections, curve_lut=self._curve_lut)
         # Ajuster l'histogramme avec les corrections actuelles
         if hasattr(self.view, "update_histogram"):
-            self.view.update_histogram(self.view._build_histogram_payload(corrections) if hasattr(self.view, "_build_histogram_payload") else None)
+            payload = self.view._build_histogram_payload(corrections) if hasattr(self.view, "_build_histogram_payload") else None
+            if payload and self._curve_lut and hasattr(self.view, "_apply_curve_to_payload"):
+                payload = self.view._apply_curve_to_payload(payload, self._curve_lut)
+            self.view.update_histogram(payload)
 
     def _register_processing_action(self, action: str, details: dict | None = None) -> None:
         detail_str = None

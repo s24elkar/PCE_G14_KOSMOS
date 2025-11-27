@@ -669,6 +669,7 @@ class VideoPlayer(QWidget):
         sharpness: int = 0,
         gamma: int = 0,
         denoise: int = 0,
+        curve_lut: list[int] | None = None,
     ):
         """
         Applique visuellement les corrections sur le frame courant (fallback gradient si pas de frame).
@@ -740,6 +741,11 @@ class VideoPlayer(QWidget):
         if denoise > 0:
             h_val = np.interp(denoise, [0, 100], [0, 15])
             frame = cv2.fastNlMeansDenoisingColored(frame, None, h_val, h_val, 7, 21)
+
+        # 7) Courbe tonale (si fournie)
+        if curve_lut:
+            lut = np.clip(np.array(curve_lut[:256], dtype=np.uint8), 0, 255)
+            frame = cv2.LUT(frame, lut)
 
         # Sauvegarder et afficher
         h, w, _ = frame.shape

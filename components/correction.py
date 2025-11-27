@@ -2,6 +2,8 @@
 Composant Correction des Images
 Contrôles pour correction couleurs, contraste et luminosité
 """
+import numpy as np
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -109,7 +111,89 @@ class LabeledSlider(QWidget):
     def get_value(self):
         """Retourne la valeur actuelle du slider"""
         return self.slider.value()
-        
+
+
+class CurveEditor(QWidget):
+    """
+    Éditeur de courbe simple : 3 points (ombres/médiums/hautes lumières) pour générer une LUT.
+    Permet d'affiner les tons sans toucher au modèle de corrections existant.
+    """
+
+    curve_changed = pyqtSignal(list)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._lut = list(range(256))
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACING["sm"])
+
+        title = QLabel("Courbe tonale")
+        title.setStyleSheet(
+            f"color: {COLORS['text_primary']}; font-weight: 700; font-size: {FONTS['sizes']['base']}px;"
+        )
+        layout.addWidget(title)
+
+        desc = QLabel("Ajustez ombres / tons moyens / hautes lumières (linéaire).")
+        desc.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {FONTS['sizes']['sm']}px;")
+        layout.addWidget(desc)
+
+        sliders = QGridLayout()
+        sliders.setContentsMargins(0, 0, 0, 0)
+        sliders.setHorizontalSpacing(SPACING["md"])
+        sliders.setVerticalSpacing(SPACING["sm"])
+
+        self.shadow_slider = LabeledSlider("Ombres", -80, 80, 0)
+        self.mid_slider = LabeledSlider("Tons moyens", -80, 80, 0)
+        self.highlight_slider = LabeledSlider("Hautes lumières", -80, 80, 0)
+
+        self.shadow_slider.value_changed.connect(self._emit_curve)
+        self.mid_slider.value_changed.connect(self._emit_curve)
+        self.highlight_slider.value_changed.connect(self._emit_curve)
+
+        sliders.addWidget(self.shadow_slider, 0, 0)
+        sliders.addWidget(self.mid_slider, 0, 1)
+        sliders.addWidget(self.highlight_slider, 1, 0, 1, 2)
+
+        layout.addLayout(sliders)
+        self.setLayout(layout)
+        self._emit_curve()
+
+    # ------------------------------------------------------------------ #
+    # API
+    # ------------------------------------------------------------------ #
+    def reset(self) -> None:
+        for slider in (self.shadow_slider, self.mid_slider, self.highlight_slider):
+            slider.reset()
+        self._emit_curve()
+
+    def current_lut(self) -> list:
+        return list(self._lut)
+
+    # ------------------------------------------------------------------ #
+    # Helpers
+    # ------------------------------------------------------------------ #
+    def _emit_curve(self, *_args) -> None:
+        self._lut = self._compute_lut()
+        self.curve_changed.emit(self._lut)
+
+    def _compute_lut(self) -> list:
+        """
+        Interpolation linéaire entre 3 points :
+        (0, 0 + ombres), (128, 128 + mids), (255, 255 + highlights)
+        """
+        shadows = np.clip(0 + self.shadow_slider.get_value(), 0, 255)
+        mids = np.clip(128 + self.mid_slider.get_value(), 0, 255)
+        highs = np.clip(255 + self.highlight_slider.get_value(), 0, 255)
+        x = np.array([0, 128, 255], dtype=np.float32)
+        y = np.array([shadows, mids, highs], dtype=np.float32)
+        lut = np.interp(np.arange(256, dtype=np.float32), x, y)
+        lut = np.clip(lut, 0, 255).astype(np.uint8)
+        return lut.tolist()
+
     def set_value(self, value):
         """Définit la valeur du slider"""
         self.slider.setValue(value)
@@ -138,6 +222,7 @@ class ImageCorrection(QWidget):
     sharpness_changed = pyqtSignal(int)
     gamma_changed = pyqtSignal(int)
     denoise_changed = pyqtSignal(int)
+    curve_changed = pyqtSignal(list)
     apply_clicked = pyqtSignal()
     undo_clicked = pyqtSignal()
     
@@ -359,9 +444,9 @@ class ImageCorrection(QWidget):
         self.denoise_slider.value_changed.connect(self.denoise_changed.emit)
         expert_grid.addWidget(self.denoise_slider, 0, 1)
 
-        expert_info = QLabel("Courbes avancées (à venir)")
-        expert_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {FONTS['sizes']['sm']}px;")
-        expert_grid.addWidget(expert_info, 1, 0, 1, 2)
+        self.curve_editor = CurveEditor()
+        self.curve_editor.curve_changed.connect(self.curve_changed.emit)
+        expert_grid.addWidget(self.curve_editor, 1, 0, 1, 2)
 
         self.expert_container.setLayout(expert_grid)
         self.expert_container.setVisible(False)
@@ -434,6 +519,8 @@ class ImageCorrection(QWidget):
         self.sharpness_slider.reset()
         self.gamma_slider.reset()
         self.denoise_slider.reset()
+        if hasattr(self, "curve_editor"):
+            self.curve_editor.reset()
 
     def set_corrections(self, contrast: int, brightness: int, saturation: int = 0, hue: int = 0,
                         temperature: int = 0, sharpness: int = 0, gamma: int = 0, denoise: int = 0):
@@ -463,7 +550,7 @@ class ImageCorrection(QWidget):
         del sharpness_blocker
         del gamma_blocker
         del denoise_blocker
-        
+
     def get_contrast(self):
         """Retourne la valeur du contraste"""
         return self.contrast_slider.get_value()
@@ -489,6 +576,12 @@ class ImageCorrection(QWidget):
 
     def get_denoise(self):
         return self.denoise_slider.get_value()
+
+    def get_curve_lut(self) -> list:
+        """Retourne la LUT actuelle (liste de 256 valeurs)."""
+        if hasattr(self, "curve_editor"):
+            return self.curve_editor.current_lut()
+        return list(range(256))
         
     def set_contrast(self, value):
         """Définit la valeur du contraste"""

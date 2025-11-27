@@ -165,6 +165,8 @@ class ExtractionView(QWidget):
         self.image_correction.gamma_changed.connect(self.controller.on_gamma_changed)
         self.image_correction.denoise_changed.connect(self.controller.on_denoise_changed)
         self.image_correction.preset_selected.connect(self.controller.on_preset_selected)
+        if hasattr(self.image_correction, "curve_changed") and hasattr(self.controller, "on_curve_changed"):
+            self.image_correction.curve_changed.connect(self.controller.on_curve_changed)
 
         # Lecteur
         self.video_player.play_pause_clicked.connect(self.controller.on_play_pause)
@@ -255,11 +257,13 @@ class ExtractionView(QWidget):
                 denoise=corrections.get("denoise", 0),
             )
 
-    def apply_corrections_to_preview(self, corrections: dict[str, int]):
+    def apply_corrections_to_preview(self, corrections: dict[str, int], curve_lut: list[int] | None = None):
         if hasattr(self.video_player, "apply_corrections"):
-            self.video_player.apply_corrections(**corrections)
+            self.video_player.apply_corrections(**corrections, curve_lut=curve_lut)
         if hasattr(self.histogram, "update_histogram"):
             payload = self._build_histogram_payload(corrections)
+            if curve_lut:
+                payload = self._apply_curve_to_payload(payload, curve_lut)
             self.update_histogram(payload)
 
     # ------------------------------------------------------------------ #
@@ -283,6 +287,29 @@ class ExtractionView(QWidget):
         blue = scaled(-20)
         density = [int((r + g + b) / 3) for r, g, b in zip(red, green, blue)]
         return {"data_r": red, "data_g": green, "data_b": blue, "data_density": density}
+
+    def _apply_curve_to_payload(self, payload: dict, curve_lut: list[int]) -> dict:
+        if not curve_lut or len(curve_lut) < 256:
+            return payload
+        lut = [max(0, min(255, int(v))) for v in curve_lut[:256]]
+
+        def remap(data: list[int]) -> list[int]:
+            if not data:
+                return data
+            out = []
+            max_val = max(data) if data else 1
+            for idx, val in enumerate(data):
+                normalized = int(idx / max(1, len(data) - 1) * 255)
+                mapped = lut[normalized]
+                out.append(int(mapped / 255 * val if max_val else 0))
+            return out
+
+        return {
+            "data_r": remap(payload.get("data_r", [])),
+            "data_g": remap(payload.get("data_g", [])),
+            "data_b": remap(payload.get("data_b", [])),
+            "data_density": remap(payload.get("data_density", [])),
+        }
 
 
 # Test manuel
