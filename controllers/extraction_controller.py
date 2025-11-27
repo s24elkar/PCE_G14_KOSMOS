@@ -4,6 +4,7 @@ Architecture MVC
 Gère la logique de la page d'extraction (lecture, navigation, outils)
 """
 import datetime
+import csv # AJOUT
 import json
 import sys
 import subprocess
@@ -37,13 +38,29 @@ class ExtractionKosmosController(QObject):
     def set_view(self, view):
         """Associe la vue à ce contrôleur"""
         self.view = view
-        # C'est le bon endroit pour connecter les signaux de la vue,
-        # car nous sommes sûrs que self.view est défini.
+        self.detached_window = None
+        
+        # Connecter tous les signaux de la vue ici
         if self.view and hasattr(self.view, 'video_player'):
-            self.view.video_player.frame_captured.connect(self.save_captured_frame)
+            self.view.video_player.detach_requested.connect(self.on_detach_player)
+            
         # Afficher la première vidéo conservée au lancement de la page Extraction
         if self.view and hasattr(self.view, 'view_shown'):
             self.view.view_shown.connect(self.load_first_video)
+
+    def load_first_video(self):
+        """
+        Charge la première vidéo marquée comme "conservée" dans le lecteur.
+        Cette méthode est appelée lorsque la page d'extraction devient visible.
+        """
+        if not self.model.campagne_courante:
+            return
+
+        videos_conservees = self.model.campagne_courante.obtenir_videos_conservees()
+        if videos_conservees:
+            premiere_video = videos_conservees[0]
+            print(f"📹 Chargement de la première vidéo conservée : {premiere_video.nom}")
+            self.charger_video_dans_lecteur(premiere_video)
 
     def load_initial_data(self):
         """
@@ -152,6 +169,77 @@ class ExtractionKosmosController(QObject):
             print(f"❌ Erreur lecture JSON communes (extraction): {e}")
             return False
 
+    def _charger_donnees_timeseries_csv(self, video):
+        """Charge les données temporelles (temp, pression...) depuis le CSV."""
+        video.timeseries_data = [] # Réinitialiser les données
+        try:
+            csv_path = Path(video.chemin).parent / f"{video.dossier_numero}.csv"
+            if not csv_path.exists():
+                print(f"⚠️ Fichier CSV non trouvé pour la vidéo: {csv_path}")
+                self.view.video_player.set_timeseries_data([])
+                return False
+
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                # Détecter le délimiteur en lisant la première ligne
+                first_line = f.readline()
+                delimiter = ';' if ';' in first_line else ','
+                f.seek(0) # Revenir au début du fichier
+                reader = csv.DictReader(f, delimiter=delimiter)
+                
+                # --- NOUVELLE LOGIQUE DE SYNCHRONISATION BASÉE SUR HMS ---
+                
+                def hms_to_seconds(hms_str):
+                    """Convertit une chaîne 'HHhMMmSSs' en secondes totales."""
+                    try:
+                        parts = hms_str.lower().replace('s', '').split('h')
+                        h = int(parts[0])
+                        parts = parts[1].split('m')
+                        m = int(parts[0])
+                        s = int(parts[1])
+                        return h * 3600 + m * 60 + s
+                    except (ValueError, IndexError):
+                        return None
+
+                # Lire la première ligne de données pour obtenir l'heure de début
+                all_rows = list(reader)
+                if not all_rows:
+                    return False
+
+                start_hms_str = all_rows[0].get('HMS')
+                start_total_seconds = hms_to_seconds(start_hms_str)
+
+                if start_total_seconds is None:
+                    print("❌ Erreur: Impossible de lire l'heure de début (colonne HMS) dans le CSV.")
+                    return False
+
+                # Mapper les noms de colonnes possibles vers les noms standard
+                column_mapping = {
+                    'pression': 'Pression',
+                    'temperature': 'TempC',
+                    'lux': 'Lux'
+                }
+                
+                for row in all_rows:
+                    processed_row = {}
+                    current_hms_str = row.get('HMS')
+                    current_total_seconds = hms_to_seconds(current_hms_str)
+
+                    for standard_name, csv_name in column_mapping.items():
+                        if csv_name in row and row[csv_name] and row[csv_name].strip():
+                            value = row[csv_name].strip().replace(',', '.')
+                            processed_row[standard_name] = value
+                    
+                    if current_total_seconds is not None:
+                        delta_seconds = current_total_seconds - start_total_seconds
+                        processed_row['timestamp_ms'] = int(delta_seconds * 1000)
+                        video.timeseries_data.append(processed_row)
+
+            print(f"✅ Données CSV chargées pour {video.nom}: {len(video.timeseries_data)} points.")
+            return True
+        except Exception as e:
+            print(f"❌ Erreur lecture CSV (extraction): {e}")
+            return False
+
     def charger_video_dans_lecteur(self, video):
         """Prépare les données de la vidéo et met à jour le lecteur de la vue"""
         if not self.view:
@@ -160,32 +248,20 @@ class ExtractionKosmosController(QObject):
         # --- AJOUT IMPORTANT : Recharger les métadonnées depuis le JSON ---
         self._charger_metadonnees_propres_json(video)
         self._charger_metadonnees_communes_json(video)
+        self._charger_donnees_timeseries_csv(video) # AJOUT
         # --- FIN AJOUT ---
 
-        # Préparer les métadonnées pour l'affichage dans le lecteur (overlay)
-        # MODIFICATION : On mappe uniquement les champs acceptés par MetadataOverlay.update_metadata
-        # Arguments acceptés : time, temp, salinity, depth, pression
-        
-        # Récupération sécurisée des valeurs (avec valeur par défaut '-')
-        t_eau = video.metadata_propres.get('ctdDict_temperature', '-') # AJOUT DU _
-        if t_eau != '-': t_eau = f"{t_eau}°C"
-        
-        depth = video.metadata_propres.get('ctdDict_depth', '-') # AJOUT DU _
-        if depth != '-': depth = f"{depth} m"
-        
-        salinity = video.metadata_propres.get('ctdDict_salinity', '-') # AJOUT DU _
-        
+        # Préparer les métadonnées STATIQUES pour l'affichage.
+        # On ne passe QUE le temps de départ. Le reste (temp, pression, lux)
+        # sera géré dynamiquement par le lecteur à partir des données CSV.
         metadata_display = {
             "time": video.start_time_str,
-            "temp": t_eau,
-            "salinity": str(salinity),
-            "depth": depth,
-            # On ne passe PAS 'date', 'lat', 'lon' car le composant lecteur ne les gère pas
         }
 
         video_data = {
             'path': video.chemin,
-            'metadata': metadata_display
+            'metadata': metadata_display,
+            'timeseries_data': video.timeseries_data # CORRECTION: Utiliser les données chargées
         }
 
         # Demander à la vue de charger cette vidéo
@@ -197,16 +273,6 @@ class ExtractionKosmosController(QObject):
     # ═══════════════════════════════════════════════════════════════
     # CONTRÔLE DU LECTEUR
     # ═══════════════════════════════════════════════════════════════
-
-    def set_view(self, view):
-        """Associe la vue à ce contrôleur"""
-        self.view = view
-        self.detached_window = None  # AJOUT
-        
-        if self.view and hasattr(self.view, 'video_player'):
-            self.view.video_player.frame_captured.connect(self.save_captured_frame)
-            # AJOUT : Connecter le signal de détachement
-            self.view.video_player.detach_requested.connect(self.on_detach_player)
 
     def on_detach_player(self):
         """Détache le lecteur dans une nouvelle fenêtre"""
@@ -329,49 +395,82 @@ class ExtractionKosmosController(QObject):
     # ═══════════════════════════════════════════════════════════════
 
     def on_screenshot(self):
-        """Demande un nom pour la capture, puis demande au lecteur de la prendre."""
+        from PyQt6.QtWidgets import QMessageBox
+        """Active le mode de sélection sur le lecteur vidéo pour une capture d'écran."""
         if not self.model.video_selectionnee:
             self.view.show_message("Aucune vidéo sélectionnée.", "warning")
             return
+        
+        if not self.view or not hasattr(self.view, 'video_player'):
+            return
+            
+        # Créer une boîte de dialogue pour demander le type de capture
+        msg_box = QMessageBox(self.view)
+        msg_box.setWindowTitle("Type de capture")
+        msg_box.setText("Quel type de capture d'écran souhaitez-vous effectuer ?")
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        
+        # Ajouter les boutons personnalisés
+        btn_full = msg_box.addButton("Image complète", QMessageBox.ButtonRole.YesRole)
+        btn_crop = msg_box.addButton("Sélectionner une zone", QMessageBox.ButtonRole.NoRole)
+        msg_box.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
+        
+        msg_box.exec()
+        
+        clicked_button = msg_box.clickedButton()
+        
+        if clicked_button == btn_full:
+            # Capture de l'image complète : on appelle directement grab_frame sans rectangle
+            self.view.video_player.grab_frame(None)
+        elif clicked_button == btn_crop:
+            # Sélection d'une zone : on active le mode de recadrage
+            self.view.show_message("Dessinez un rectangle sur la vidéo pour capturer une zone.", "info")
+            self.view.video_player.start_cropping()
 
-        # 1. Boîte de dialogue pour saisir le nom de la capture
+    def on_crop_area_selected(self, crop_rect):
+        """Slot appelé lorsque l'utilisateur a sélectionné une zone à capturer."""
+        # Demande au lecteur de capturer l'image, en lui passant la zone à recadrer.
+        self.view.video_player.grab_frame(crop_rect)
+
+    def save_captured_frame(self, frame: 'QPixmap'):
+        """
+        Reçoit le QPixmap (déjà recadré si nécessaire), demande un nom à l'utilisateur,
+        puis sauvegarde l'image.
+        """
+        if not frame:
+            self.view.show_message("Impossible de capturer l'image de la vidéo.", "error")
+            return
+
+        # 1. Demander le nom de la capture maintenant, après la sélection.
         capture_name, ok_pressed = QInputDialog.getText(
             self.view,
             "Nommer la capture",
             "Entrez le nom de la capture (sans extension) :",
         )
 
-        # 2. Si l'utilisateur a validé et entré un nom
-        if ok_pressed and capture_name:
-            self.pending_capture_name = capture_name
-            # 3. Demande au lecteur de capturer l'image. La sauvegarde suivra.
-            self.view.video_player.grab_frame()
-        else:
-            print("❌ Capture annulée ou nom vide.")
-
-    def save_captured_frame(self, frame: 'QPixmap'):
-        if not frame or not self.pending_capture_name:
-            self.view.show_message("Impossible de capturer l'image de la vidéo.", "error")
+        if not ok_pressed or not capture_name:
+            self.view.show_message("Capture annulée.", "info")
             return
 
+        self.pending_capture_name = capture_name
+
         # 2. Définir le chemin de sauvegarde
-        save_dir = Path(self.model.campagne_courante.workspace_extraction)
-        
-        if not save_dir:
+        workspace = self.model.campagne_courante.workspace_extraction
+        if not workspace:
             self.view.show_message("Dossier d'extraction non défini pour la campagne.", "error")
             return
 
         # Créer un sous-dossier "captures" pour une meilleure organisation
-        captures_dir = save_dir / "captures"
+        captures_dir = Path(workspace) / "captures"
         captures_dir.mkdir(parents=True, exist_ok=True)
 
         # 3. Utiliser le nom fourni par l'utilisateur
-        filename = f"{self.pending_capture_name}.jpg"
+        filename = f"{self.pending_capture_name}.png"
         save_path = captures_dir / filename
 
-        # 4. Sauvegarder l'image
+        # 4. Sauvegarder l'image (qui est déjà recadrée)
         try:
-            frame.save(str(save_path), "jpg", 95)
+            frame.save(str(save_path), "png", -1)
             self.view.show_message(f"Capture enregistrée : {filename}", "success")
             print(f"📸 Capture d'écran enregistrée sous : {save_path}")
         except Exception as e:
@@ -383,11 +482,17 @@ class ExtractionKosmosController(QObject):
             
     def on_recording(self):
         """Démarre/Arrête l'enregistrement d'un extrait"""
-        if not self.view or not self.model.video_selectionnee or not self.view.video_player.media_player:
+        if not self.view or not self.model.video_selectionnee:
             self.view.show_message("Aucune vidéo sélectionnée.", "warning")
             return
 
-        current_pos_ms = self.view.video_player.media_player.position()
+        # Calculer la position actuelle en fonction de la frame courante
+        video_thread = self.view.video_player.video_thread
+        if video_thread.total_frames == 0:
+            self.view.show_message("La durée de la vidéo est inconnue.", "error")
+            return
+            
+        current_pos_ms = int((video_thread.current_frame / video_thread.fps) * 1000)
         duration_ms = self.view.video_player.duration
 
         if duration_ms == 0:
@@ -443,16 +548,40 @@ class ExtractionKosmosController(QObject):
 
         # 1. Obtenir la position actuelle et la durée totale
         player = self.view.video_player
-        current_pos_ms = player.media_player.position()
+        video_thread = player.video_thread
+        
+        if video_thread.total_frames == 0:
+            self.view.show_message("La durée de la vidéo est inconnue.", "error")
+            return
+            
+        current_pos_ms = int((video_thread.current_frame / video_thread.fps) * 1000)
         total_duration_ms = player.duration
 
         if total_duration_ms == 0:
             self.view.show_message("La durée de la vidéo est inconnue.", "error")
             return
 
-        # 2. Calculer les temps de début et de fin (15s avant, 15s après)
-        start_ms = max(0, current_pos_ms - 15000)
-        end_ms = min(total_duration_ms, current_pos_ms + 15000)
+        # 2. NOUVEAU : Demander à l'utilisateur de choisir la durée du short
+        durations = ["10 secondes", "20 secondes", "30 secondes"]
+        selected_duration_str, ok = QInputDialog.getItem(
+            self.view,
+            "Choisir la durée du Short",
+            "Quelle durée pour votre short ?",
+            durations,
+            0,  # index par défaut
+            False # non-éditable
+        )
+
+        if not ok:
+            self.view.show_message("Création du short annulée.", "info")
+            return
+
+        # Extraire la durée en secondes (ex: "10 secondes" -> 10)
+        clip_duration_s = int(selected_duration_str.split()[0])
+
+        # 3. Calculer les temps de début et de fin en fonction de la durée choisie
+        start_ms = max(0, current_pos_ms - (clip_duration_s * 1000 // 2))
+        end_ms = min(total_duration_ms, start_ms + (clip_duration_s * 1000))
         clip_duration_s = (end_ms - start_ms) / 1000
 
         # Convertir en format HH:MM:SS.ms pour ffmpeg
@@ -464,7 +593,7 @@ class ExtractionKosmosController(QObject):
         shorts_dir.mkdir(parents=True, exist_ok=True)
         temp_preview_path = shorts_dir / f"~preview_temp.mp4"
 
-        # 5. Créer un aperçu accéléré avec ffmpeg
+        # 4. Créer un aperçu accéléré avec ffmpeg
         try:
             self.view.show_message("Création de l'aperçu...", "info")
             # Commande ffmpeg pour créer un aperçu x2, basse qualité
@@ -473,8 +602,8 @@ class ExtractionKosmosController(QObject):
                 '-ss', start_time_str,
                 '-i', self.model.video_selectionnee.chemin,
                 '-t', str(clip_duration_s),
-                # Filtre pour format vertical 9:16 + accélération
-                '-vf', 'crop=ih*9/16:ih,scale=720:1280,setpts=0.5*PTS',
+                # Filtre pour accélération x2 uniquement, sans recadrage vertical
+                '-vf', 'setpts=0.5*PTS',
                 '-af', 'atempo=2.0',      # Accélère l'audio x2
                 '-preset', 'ultrafast',  # Encodage très rapide
                 '-crf', '28',            # Qualité plus basse pour la vitesse,
@@ -486,16 +615,21 @@ class ExtractionKosmosController(QObject):
             self.view.show_message(f"Erreur création aperçu: {error_msg}", "error")
             return
 
-        # 6. Afficher la boîte de dialogue d'aperçu
+        # 5. Afficher la boîte de dialogue d'aperçu
         from components.short_preview_dialog import ShortPreviewDialog
         preview_dialog = ShortPreviewDialog(str(temp_preview_path), self.view)
         
         accepted = preview_dialog.exec()
 
         try:
-            # 7. Si l'utilisateur a cliqué sur "Enregistrer" et entré un nom
+            # 6. Si l'utilisateur a cliqué sur "Enregistrer" et entré un nom
             if accepted:
                 short_name = preview_dialog.get_short_name()
+
+                # Le temps de début a déjà été calculé pour l'aperçu, nous le réutilisons.
+                # La durée est 'clip_duration_s' définie au début.
+                start_ms_final = start_ms
+                start_time_str_final = str(datetime.timedelta(milliseconds=start_ms_final))
 
                 try:
                     if not short_name:
@@ -507,11 +641,11 @@ class ExtractionKosmosController(QObject):
                     # Commande ffmpeg pour créer le clip final en qualité originale
                     cmd_final = [
                         'ffmpeg',
-                        '-ss', start_time_str,
+                        '-ss', start_time_str_final,
                         '-i', self.model.video_selectionnee.chemin,
                         '-t', str(clip_duration_s),
-                    # Filtre pour format vertical 9:16
-                    '-vf', 'crop=ih*9/16:ih,scale=720:1280',
+                        # On ne recadre plus, donc on peut copier le flux pour garder la qualité et la vitesse
+                        '-c', 'copy',
                         '-y', str(final_output_path)
                     ]
                     subprocess.run(cmd_final, check=True, capture_output=True, text=True)
@@ -524,7 +658,7 @@ class ExtractionKosmosController(QObject):
                 self.view.show_message("Enregistrement annulé.", "info")
 
         finally:
-            # 8. Nettoyer le fichier d'aperçu temporaire dans tous les cas
+            # 7. Nettoyer le fichier d'aperçu temporaire dans tous les cas
             if temp_preview_path.exists():
                 try:
                     temp_preview_path.unlink()

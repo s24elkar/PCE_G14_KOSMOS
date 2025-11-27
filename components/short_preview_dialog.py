@@ -1,7 +1,8 @@
 """
 Fenêtre de dialogue pour prévisualiser un short avant de l'enregistrer.
 """
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox, QLineEdit)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+                             QMessageBox, QLineEdit)
 from PyQt6.QtCore import Qt, QUrl
 from .lecteur import VideoPlayer
 
@@ -23,13 +24,10 @@ class ShortPreviewDialog(QDialog):
             QMessageBox.critical(self, "Erreur", "Le fichier d'aperçu est introuvable.")
             self.reject()
         else:
-            # Charger et jouer la vidéo automatiquement
-            # 1. Charger la vidéo (ce qui initialise le media_player)
-            self.video_player.load_video(self.temp_video_path)
-            # 2. Maintenant que media_player existe, on peut configurer la boucle
-            self.video_player.media_player.setLoops(-1)
-            # 3. Lancer la lecture
-            self.video_player.media_player.play()
+            # Charger et jouer la vidéo automatiquement avec le lecteur OpenCV
+            self.video_player.load_video(self.temp_video_path, autoplay=True)
+            # Activer la lecture en boucle
+            self.video_player.video_thread.set_looping(True)
 
     def init_ui(self):
         """Initialise l'interface utilisateur du dialogue."""
@@ -61,6 +59,7 @@ class ShortPreviewDialog(QDialog):
         name_layout.addWidget(self.name_input)
         main_layout.addLayout(name_layout)
 
+
         # Boutons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -91,12 +90,21 @@ class ShortPreviewDialog(QDialog):
             return
         self.accept()
 
-    def closeEvent(self, event):
-        """S'assure que le lecteur est arrêté à la fermeture."""
-        if self.video_player and self.video_player.media_player:
-            # Arrêter la lecture
-            self.video_player.media_player.stop()
-            # Forcer la libération du fichier en définissant la source à null
-            self.video_player.media_player.setSource(QUrl())
-            print("▶️ Lecteur de l'aperçu arrêté et ressource libérée.")
-        super().closeEvent(event)
+    def cleanup(self):
+        """Arrête proprement le lecteur vidéo et libère les ressources."""
+        if self.video_player and self.video_player.video_thread:
+            # Arrêter le thread vidéo pour libérer les ressources
+            self.video_player.video_thread.set_looping(False) # Arrêter la boucle
+            self.video_player.video_thread.stop()
+            # Attendre que le thread se termine pour être sûr que le fichier est libéré
+            self.video_player.video_thread.wait(1000) # Attendre max 1 seconde
+            self.video_player.close() # S'assurer que le widget est détruit
+            print("🗑️ Lecteur de l'aperçu arrêté et ressource libérée.")
+
+    def reject(self):
+        self.cleanup()
+        super().reject()
+
+    def accept(self):
+        self.cleanup()
+        super().accept()

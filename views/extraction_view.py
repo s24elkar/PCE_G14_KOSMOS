@@ -289,6 +289,19 @@ class ExtractionView(QWidget):
                     self.video_player.position_changed.connect(
                         self.controller.on_position_changed
                     )
+                # Connecter les signaux pour la capture d'écran
+                if hasattr(self.video_player, 'frame_captured'):
+                    self.video_player.frame_captured.connect(
+                        self.controller.save_captured_frame
+                    )
+                # Le signal vient maintenant du widget enfant mais est exposé par VideoPlayer
+                if hasattr(self.video_player, 'crop_area_selected'):
+                    self.video_player.crop_area_selected.connect(self.controller.on_crop_area_selected)
+
+                if hasattr(self.video_player, 'detach_requested'):
+                    self.video_player.detach_requested.connect(
+                        self.controller.on_detach_player
+                    )
                 if hasattr(self.video_player, 'controls'):
                     if hasattr(self.video_player.controls, 'previous_clicked'):
                         self.video_player.controls.previous_clicked.connect(
@@ -332,6 +345,9 @@ class ExtractionView(QWidget):
         if hasattr(self, 'video_player'):
             if hasattr(self.video_player, 'update_metadata') and 'metadata' in video_data:
                 self.video_player.update_metadata(**video_data['metadata'])
+            # CORRECTION : Transmettre les données temporelles au lecteur
+            if hasattr(self.video_player, 'set_timeseries_data') and 'timeseries_data' in video_data:
+                self.video_player.set_timeseries_data(video_data['timeseries_data'])
             if hasattr(self.video_player, 'load_video') and 'path' in video_data:
                 self.video_player.load_video(video_data['path'])
         

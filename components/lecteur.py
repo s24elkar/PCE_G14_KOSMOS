@@ -1,84 +1,303 @@
 """
 Composant Lecteur Vidéo
 Lecteur avec timeline, contrôles et affichage des métadonnées
+Utilise OpenCV dans un QThread pour l'affichage vidéo avec overlay personnalisé
 """
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QStackedLayout,
                              QPushButton, QSlider, QFrame)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect, QUrl, QSize, QRectF
-from PyQt6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap, QIcon
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoFrame
-from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QSize, QPoint, QThread
+from PyQt6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap, QIcon, QBrush, QCursor, QImage
 from pathlib import Path
+import sys
+import time
+import cv2
+import numpy as np
 
 
-class MetadataOverlay(QWidget):
-    """Overlay pour afficher les métadonnées de la vidéo"""
+class VideoThread(QThread):
+    """Thread pour lire la vidéo avec OpenCV sans bloquer l'UI."""
+    frame_ready = pyqtSignal(np.ndarray)
+    position_changed = pyqtSignal(int)
+    duration_changed = pyqtSignal(int)
     
+    def __init__(self):
+        super().__init__()
+        self.cap = None
+        self.video_path_to_load = None
+        self._is_running = True
+        self.is_paused = False
+        self.current_frame = 0
+        self.total_frames = 0
+        self.fps = 25
+        self.seek_frame = -1
+        self.loop = False # AJOUT: Attribut pour la lecture en boucle
+        self.speed = 1.0
+        
+    def stop(self):
+        """Arrête proprement le thread."""
+        self._is_running = False
+        
+    def load_video(self, video_path):
+        """
+        Demande au thread de charger une nouvelle vidéo.
+        Ne manipule pas cv2.VideoCapture directement.
+        """
+        self.video_path_to_load = video_path
+        
+    def play(self):
+        self.is_paused = False
+        
+    def pause(self):
+        self.is_paused = True
+        
+    def seek(self, frame_number):
+        """Aller à une frame spécifique."""
+        if self.total_frames > 0:
+            target_frame = max(0, min(frame_number, self.total_frames - 1))
+            self.seek_frame = target_frame
+
+    def set_looping(self, loop: bool):
+        """Active ou désactive la lecture en boucle."""
+        self.loop = loop
+        
+    def set_speed(self, speed):
+        self.speed = speed
+        
+    def run(self):
+        """Boucle principale du thread vidéo."""
+        while self._is_running:
+            # --- GESTION DU CHARGEMENT DE VIDÉO (Thread-safe) ---
+            if self.video_path_to_load:
+                if self.cap:
+                    self.cap.release()
+                self.cap = cv2.VideoCapture(str(self.video_path_to_load))
+                
+                if self.cap.isOpened():
+                    self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25
+                    duration_ms = int((self.total_frames / self.fps) * 1000)
+                    self.duration_changed.emit(duration_ms)
+                    
+                    ret, frame = self.cap.read()
+                    if ret:
+                        self.current_frame = 0
+                        self.frame_ready.emit(frame)
+                        self.position_changed.emit(0)
+                    print(f"📹 Vidéo OpenCV chargée: {self.total_frames} frames à {self.fps} fps")
+                else:
+                    print(f"❌ Erreur: Impossible d'ouvrir la vidéo {self.video_path_to_load}")
+                    self.cap = None # S'assurer que cap est None en cas d'échec
+                
+                self.video_path_to_load = None # Réinitialiser la demande
+
+            if not self.cap or not self.cap.isOpened():
+                self.msleep(100)
+                continue
+
+            if self.seek_frame != -1:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.seek_frame)
+                self.current_frame = self.seek_frame
+                self.seek_frame = -1
+                
+                ret, frame = self.cap.read()
+                if ret:
+                    self.frame_ready.emit(frame)
+                    position_ms = int((self.current_frame / self.fps) * 1000)
+                    self.position_changed.emit(position_ms)
+
+            if not self.is_paused:
+                ret, frame = self.cap.read()
+                if ret:
+                    self.frame_ready.emit(frame)
+                    self.current_frame += 1
+                    position_ms = int((self.current_frame / self.fps) * 1000)
+                    self.position_changed.emit(position_ms)
+                    
+                    delay = int((1000 / self.fps) / self.speed)
+                    self.msleep(delay)
+                else:
+                    # Si la lecture en boucle est activée, on revient au début
+                    if self.loop:
+                        self.seek(0)
+                        continue
+                    self.is_paused = True # Fin de la vidéo
+            else:
+                self.msleep(50)
+        
+        if self.cap:
+            self.cap.release()
+
+
+class CustomVideoWidget(QLabel):
+    """Widget vidéo basé sur QLabel avec OpenCV pour un contrôle total de l'affichage."""
+    
+    # Signal émis lorsque l'utilisateur a fini de dessiner un rectangle
+    crop_area_selected = pyqtSignal(QRect)
+    # Signal pour demander au parent de reprendre la lecture si nécessaire
+    cropping_finished = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.init_ui()
+        self.metadata_lines = []
+        self.show_metadata = True
+        self.current_pixmap = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: black; border: none;")
+        self.setMinimumSize(640, 360)
+
+        # --- Attributs pour le mode capture ---
+        self.is_cropping = False
+        self.crop_start_point = QPoint()
+        self.crop_end_point = QPoint()
+        self.setMouseTracking(True) # Important pour suivre la souris même sans clic
+
+
+    def set_metadata(self, metadata_dict):
+        """Prépare les lignes de texte à afficher."""
+        self.metadata_lines = []
+        if not metadata_dict:
+            self.update()
+            return
+            
+        if 'time' in metadata_dict: self.metadata_lines.append(f"⏰ Time : {metadata_dict['time']}")
+        if 'temp' in metadata_dict: self.metadata_lines.append(f"🌡️ Temp : {metadata_dict['temp']}")
+        # if 'salinity' in metadata_dict: self.metadata_lines.append(f"💧 Salinity : {metadata_dict['salinity']}") # Exemple
+        # if 'depth' in metadata_dict: self.metadata_lines.append(f"📏 Depth : {metadata_dict['depth']}") # Exemple
+        if 'pression' in metadata_dict: self.metadata_lines.append(f"⚖️ Pression : {metadata_dict['pression']}")
+        if 'lux' in metadata_dict: self.metadata_lines.append(f"💡 Lux : {metadata_dict['lux']}")
         
-    def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        layout.setSpacing(2)
+        self.update() # Demande un redessinage
+
+    def toggle_metadata(self, show):
+        self.show_metadata = show
+        self.update()
+
+    def update_frame(self, frame):
+        """Met à jour l'affichage avec une nouvelle frame OpenCV."""
+        height, width, channel = frame.shape
+        bytes_per_line = 3 * width
+        q_image = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
         
-        # Style pour les labels
-        label_style = """
-            QLabel {
-                color: white;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 3px 10px;
-                border-radius: 0px;
-                font-family: Arial;
-            }
-        """
+        # Utiliser QPainter pour une conversion de haute qualité de QImage vers QPixmap
+        # afin d'éviter la pixellisation potentielle de fromImage().
+        pixmap = QPixmap(q_image.size())
+        painter = QPainter(pixmap)
+        painter.drawImage(0, 0, q_image)
+        painter.end()
+        self.current_pixmap = pixmap
+        self.update()
+
+    def paintEvent(self, event):
+        if not self.current_pixmap:
+            super().paintEvent(event)
+            return
+
+        painter = QPainter(self)
         
-        self.time_label = QLabel("⏰ Time : 13:06")
-        self.time_label.setStyleSheet(label_style)
-        layout.addWidget(self.time_label)
+        # On ne redimensionne que si l'image est plus grande que le lecteur
+        # pour éviter de la pixelliser en l'agrandissant.
+        if self.current_pixmap.width() > self.width() or self.current_pixmap.height() > self.height():
+            # Utiliser SmoothTransformation pour une meilleure qualité de réduction
+            pixmap_to_draw = self.current_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        else:
+            # Si l'image est plus petite, on l'affiche en qualité native (taille originale)
+            pixmap_to_draw = self.current_pixmap
         
-        self.temp_label = QLabel("🌡️ Temp : 15°C")
-        self.temp_label.setStyleSheet(label_style)
-        layout.addWidget(self.temp_label)
-        
-        self.salinity_label = QLabel("💧 Salinity : xx")
-        self.salinity_label.setStyleSheet(label_style)
-        layout.addWidget(self.salinity_label)
-        
-        self.depth_label = QLabel("📏 Depth : 10 m")
-        self.depth_label.setStyleSheet(label_style)
-        layout.addWidget(self.depth_label)
-        
-        self.pression_label = QLabel("⚖️ Pression : xx bar")
-        self.pression_label.setStyleSheet(label_style)
-        layout.addWidget(self.pression_label)
-        
-        layout.addStretch()
-        
-        self.setLayout(layout)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        
-    def update_metadata(self, time=None, temp=None, salinity=None, depth=None, pression=None):
-        """Met à jour les métadonnées affichées"""
-        if time is not None:
-            self.time_label.setText(f"⏰ Time : {time}")
-        if temp is not None:
-            self.temp_label.setText(f"🌡️ Temp : {temp}")
-        if salinity is not None:
-            self.salinity_label.setText(f"💧 Salinity : {salinity}")
-        if depth is not None:
-            self.depth_label.setText(f"📏 Depth : {depth}")
-        if pression is not None:
-            self.pression_label.setText(f"⚖️ Pression : {pression}")
+        # Centrer le pixmap
+        x = (self.width() - pixmap_to_draw.width()) // 2
+        y = (self.height() - pixmap_to_draw.height()) // 2
+        painter.drawPixmap(x, y, pixmap_to_draw)
+
+        if self.show_metadata and self.metadata_lines:
+            self.draw_metadata(painter)
+            
+        # --- DESSIN DE L'OVERLAY DE CAPTURE ---
+        # On dessine par-dessus la vidéo
+        if self.is_cropping:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+            # Dessiner le rectangle de sélection en cours
+            if not self.crop_start_point.isNull() and not self.crop_end_point.isNull():
+                crop_rect = QRect(self.crop_start_point, self.crop_end_point).normalized()
+                
+                if crop_rect.width() > 2 and crop_rect.height() > 2:
+                    # Zone claire pour la sélection
+                    painter.setBrush(QColor(255, 255, 255, 50))
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.drawRect(crop_rect)
+
+                    # Bordure rouge très visible
+                    pen = QPen(QColor(255, 0, 0), 2, Qt.PenStyle.SolidLine)
+                    painter.setPen(pen)
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.drawRect(crop_rect)
+
+                    # Afficher les dimensions
+                    painter.setPen(QColor("white"))
+                    painter.drawText(crop_rect.bottomLeft() + QPoint(5, 15), f"{crop_rect.width()}x{crop_rect.height()}")
+
+    def start_cropping_mode(self):
+        self.is_cropping = True
+        self.crop_start_point = QPoint()
+        self.crop_end_point = QPoint()
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def draw_metadata(self, painter):
+        if not self.metadata_lines:
+            return
+
+        painter.setPen(QPen(QColor("white")))
+        font = painter.font()
+        font.setPointSize(10)
+        painter.setFont(font)
+
+        y_pos = 20
+        for line in self.metadata_lines:
+            painter.drawText(10, y_pos, line)
+            y_pos += 20
+
+    def get_current_pixmap_for_capture(self):
+        return self.current_pixmap.copy() if self.current_pixmap else None
+
+    # --- GESTION DES ÉVÉNEMENTS SOURIS POUR LA CAPTURE ---
+    def mousePressEvent(self, event):
+        if self.is_cropping and event.button() == Qt.MouseButton.LeftButton:
+            self.crop_start_point = event.pos()
+            self.crop_end_point = self.crop_start_point
+            print(f"🖱️ Début sélection: {self.crop_start_point}")
+            self.update()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.is_cropping and (event.buttons() & Qt.MouseButton.LeftButton):
+            self.crop_end_point = event.pos()
+            self.update() # Redessine le rectangle
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.is_cropping and event.button() == Qt.MouseButton.LeftButton:
+            crop_rect = QRect(self.crop_start_point, self.crop_end_point).normalized()
+            print(f"🖱️ Fin sélection: {crop_rect}")
+            
+            self.is_cropping = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.update()
+            self.cropping_finished.emit() # Informe le parent que c'est fini
+
+            if crop_rect.width() > 5 and crop_rect.height() > 5:
+                self.crop_area_selected.emit(crop_rect)
+            else:
+                print("⚠️ Sélection trop petite, ignorée")
+        else:
+            super().mouseReleaseEvent(event)
+
 
 
 class VideoTimeline(QSlider):
     """Timeline avec marqueurs rouges pour les points clés"""
     
-    position_changed = pyqtSignal(int) # Émis quand le slider principal bouge
     selection_changed = pyqtSignal(int, int) # Émis quand les poignées de sélection bougent
     
     def __init__(self, parent=None):
@@ -101,7 +320,6 @@ class VideoTimeline(QSlider):
         self.setMinimum(0)
         self.setMaximum(1000)
         self.setValue(0)
-        self.valueChanged.connect(self._on_value_changed)
         self.setFixedHeight(30)
         
         self.setStyleSheet("""
@@ -123,11 +341,6 @@ class VideoTimeline(QSlider):
                 background: #e0e0e0;
             }
         """)
-        
-    def _on_value_changed(self, value):
-        self.current_value = value
-        self.update()
-        self.position_changed.emit(value)
         
     def paintEvent(self, event):
         # On demande au QSlider de se dessiner d'abord
@@ -252,7 +465,8 @@ class VideoControls(QWidget):
     rewind_clicked = pyqtSignal()
     forward_clicked = pyqtSignal()
     speed_changed = pyqtSignal(float)
-    detach_clicked = pyqtSignal()
+    detach_clicked = pyqtSignal()    
+    toggle_metadata_clicked = pyqtSignal(bool) # AJOUT
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -365,6 +579,17 @@ class VideoControls(QWidget):
         self.btn_detach.setToolTip("Détacher dans une nouvelle fenêtre")
         self.btn_detach.clicked.connect(self.detach_clicked.emit)
         layout.addWidget(self.btn_detach)
+
+        # AJOUT : Bouton pour afficher/cacher les métadonnées
+        self.btn_toggle_metadata = QPushButton("ℹ️")
+        self.btn_toggle_metadata.setFixedSize(45, 45)
+        self.btn_toggle_metadata.setStyleSheet(button_style)
+        self.btn_toggle_metadata.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_toggle_metadata.setToolTip("Afficher / Cacher les métadonnées")
+        self.btn_toggle_metadata.setCheckable(True)
+        self.btn_toggle_metadata.setChecked(True)
+        self.btn_toggle_metadata.toggled.connect(self.toggle_metadata_clicked)
+        layout.addWidget(self.btn_toggle_metadata)
         
         layout.addStretch()
         
@@ -403,10 +628,16 @@ class VideoControls(QWidget):
     def update_play_pause_button(self, is_playing):
         self.is_playing = is_playing
         self.update_play_pause_icon()
+    
+    def update_position(self, current_ms, total_ms):
+        """Met à jour l'affichage de la position (optionnel pour les contrôles)."""
+        # Cette méthode peut être utilisée pour afficher la position dans les contrôles
+        # Pour l'instant, nous n'affichons pas la position dans les contrôles
+        pass
 
 
 class VideoPlayer(QWidget):
-    """Composant Lecteur Vidéo"""
+    """Composant Lecteur Vidéo avec OpenCV"""
     
     # Signaux
     play_pause_clicked = pyqtSignal()
@@ -417,11 +648,36 @@ class VideoPlayer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duration = 0
-        self.media_player = None
-        self.audio_output = None
-        self._player_initialized = False
-        self.playback_speed = 1.0
+        
+        # --- OpenCV Video Thread ---
+        self.video_thread = VideoThread()
+        self.video_thread.frame_ready.connect(self.on_frame_ready)
+        self.video_thread.position_changed.connect(self.on_position_changed)
+        self.video_thread.position_changed.connect(self.update_timeseries_metadata)  # AJOUT pour métadonnées
+        self.video_thread.duration_changed.connect(self.on_duration_changed)
+        self.video_thread.start() # Démarrer le thread une seule fois
+        
+        # --- AJOUTS POUR LES DONNÉES TEMPORELLES ---
+        self.static_metadata = {} # Pour stocker les métadonnées du JSON
+        self.timeseries_data = []
+        self.last_timeseries_index = 0
+        # --- FIN AJOUTS ---
+        self.current_cv_frame = None # Pour stocker la dernière frame brute OpenCV
+        self._player_initialized = False # Attribut pour savoir si une vidéo est chargée
+        self._was_playing_before_crop = False
+        self._capture_in_progress = False
+        
         self.init_ui()
+
+    def closeEvent(self, event):
+        """S'assure que le thread est bien arrêté à la fermeture."""
+        self.video_thread.stop()
+        self.video_thread.wait()
+
+    def on_frame_ready(self, frame):
+        """Appelé quand une nouvelle frame est prête depuis OpenCV."""
+        self.current_cv_frame = frame # Stocker la frame brute
+        self.video_widget.update_frame(frame)
 
     def init_ui(self):
         main_layout = QVBoxLayout()
@@ -429,50 +685,15 @@ class VideoPlayer(QWidget):
         main_layout.setSpacing(0)
         
         # Zone vidéo avec overlay
-        video_container = QFrame()
-        video_container.setMinimumHeight(300)  # Réduit de 350 à 300
-        video_container.setStyleSheet("""
-            QFrame {
-                background-color: black;
-                border: 3px solid black;
-            }
-        """)
-        video_layout = QVBoxLayout()
-        video_layout.setContentsMargins(0, 0, 0, 0)
+        self.video_widget = CustomVideoWidget()
+        # Connecter le signal de capture du widget enfant au contrôleur (via la vue)
+        # C'est le widget enfant qui émettra le signal, pas le VideoPlayer
+        self.crop_area_selected = self.video_widget.crop_area_selected
+        self.video_widget.cropping_finished.connect(self.on_cropping_finished_by_child)
+
+        main_layout.addWidget(self.video_widget, stretch=1)
         
-        # Widget vidéo réel
-        self.video_widget = QVideoWidget()
-        self.video_widget.setStyleSheet("background-color: black;")
-        
-        # Overlay de métadonnées
-        self.metadata_overlay = MetadataOverlay(self.video_widget)
-        
-        # Bouton plein écran
-        self.fullscreen_btn = QPushButton("⛶")
-        self.fullscreen_btn.setFixedSize(35, 35)
-        self.fullscreen_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(42, 42, 42, 200);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 100);
-                border-radius: 5px;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(58, 58, 58, 220);
-                border-color: rgba(255, 255, 255, 150);
-            }
-        """)
-        self.fullscreen_btn.setParent(self.video_widget)
-        
-        video_layout.addWidget(self.video_widget)
-        video_container.setLayout(video_layout)
-        
-        # Utiliser stretch pour que la vidéo s'adapte mais laisse de la place aux contrôles
-        main_layout.addWidget(video_container, stretch=1)
-        
-        # Timeline avec hauteur fixe réduite pour rester visible
+        # Timeline
         timeline_container = QWidget()
         timeline_container.setFixedHeight(35)  # Réduit de 45 à 35
         timeline_layout = QVBoxLayout()
@@ -480,14 +701,16 @@ class VideoPlayer(QWidget):
         timeline_layout.setSpacing(0)
         
         self.timeline = VideoTimeline()
-        self.timeline.position_changed.connect(self.on_timeline_moved)
+        self.timeline.sliderPressed.connect(self.on_timeline_pressed)
+        self.timeline.sliderMoved.connect(self.on_timeline_moved)
+        self.timeline.sliderReleased.connect(self.on_timeline_released)
         timeline_layout.addWidget(self.timeline)
         
         timeline_container.setLayout(timeline_layout)
         timeline_container.setStyleSheet("background-color: black;")
         main_layout.addWidget(timeline_container, stretch=0)
         
-        # Contrôles avec hauteur fixe réduite pour rester visibles
+        # Contrôles
         controls_container = QWidget()
         controls_container.setFixedHeight(55)  # Réduit de 70 à 55
         controls_layout = QVBoxLayout()
@@ -499,6 +722,7 @@ class VideoPlayer(QWidget):
         self.controls.forward_clicked.connect(self.seek_forward)
         self.controls.speed_changed.connect(self.on_speed_changed)
         self.controls.detach_clicked.connect(self.on_detach_player)
+        self.controls.toggle_metadata_clicked.connect(self.toggle_metadata_overlay) # AJOUT
         
         controls_layout.addWidget(self.controls)
         controls_container.setLayout(controls_layout)
@@ -513,148 +737,240 @@ class VideoPlayer(QWidget):
             }
         """)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        if not self._player_initialized:
-            self.setup_player()
+    def update_timeseries_metadata(self, position_ms):
+        """Met à jour l'overlay avec les données du CSV en fonction du temps."""
+        dynamic_metadata = {}
+        if not self.timeseries_data:
+            pass # On continue même sans données CSV pour afficher les métadonnées statiques
 
-    def setup_player(self):
-        if self._player_initialized:
-            return
-            
-        self.media_player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-        self.media_player.setAudioOutput(self.audio_output)
-        self.media_player.setVideoOutput(self.video_widget)
-        self.media_player.positionChanged.connect(self.on_position_changed)
-        self.media_player.durationChanged.connect(self.on_duration_changed)
-        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
-        self._player_initialized = True
-        
-        print("✅ Lecteur vidéo initialisé")
+        # Recherche optimisée : on part de l'index précédent
+        for i in range(self.last_timeseries_index, len(self.timeseries_data)):
+            row = self.timeseries_data[i]
+            if row['timestamp_ms'] >= position_ms:
+                # On a trouvé la bonne ligne ou la première après la position
+                self.last_timeseries_index = i
+                
+                # Récupérer toutes les valeurs, avec une valeur par défaut si absente
+                dynamic_metadata['temp'] = f"{row.get('temperature', '--')}°C"
+                dynamic_metadata['pression'] = f"{row.get('pression', '--')} bar"
+                dynamic_metadata['lux'] = f"{row.get('lux', '--')}"
+                # On pourrait ajouter salinity et depth ici s'ils étaient dans le CSV
+                
+                break # On a trouvé la donnée pour ce timestamp, on sort de la boucle
+
+        # Calcul du temps formaté
+        seconds = position_ms // 1000
+        minutes = seconds // 60
+        hours = minutes // 60
+        time_str = f"{hours:02}:{minutes % 60:02}:{seconds % 60:02}"
+        dynamic_metadata['time'] = time_str
+
+        # Fusionner les métadonnées statiques et dynamiques
+        # Les données dynamiques (du CSV) écrasent les statiques si les clés sont identiques
+        final_metadata = {**self.static_metadata, **dynamic_metadata}
+
+        # Envoyer le tout au widget vidéo pour qu'il les dessine
+        self.video_widget.set_metadata(final_metadata)
+
 
     def load_video(self, file_path, autoplay=False):
-        if not self._player_initialized:
-            self.setup_player()
-            
-        url = QUrl.fromLocalFile(file_path)
-        self.media_player.setSource(url)
-        self.media_player.setPlaybackRate(self.playback_speed)
-        if not autoplay:
-            self.media_player.pause()
-            self.controls.update_play_pause_button(False)
-        
+        """Charge une vidéo avec OpenCV."""
+        self.video_thread.load_video(file_path)
+        self._player_initialized = True # On considère le lecteur comme initialisé
+        self.controls.update_play_pause_button(autoplay)
+        if autoplay:
+            self.video_thread.play()
+        else:
+            self.video_thread.pause()
+        self.video_thread.seek(0)
+        self.timeline.setValue(0)
         print(f"📹 Vidéo chargée : {file_path}")
+        return True
 
-    def on_speed_changed(self, speed: float):
-        self.playback_speed = speed
-        if self.media_player:
-            self.media_player.setPlaybackRate(speed)
-            print(f"⚡ Vitesse appliquée : {speed}x")
-    
+    def set_timeseries_data(self, data):
+        """Reçoit les données temporelles du contrôleur."""
+        self.timeseries_data = data
+        self.last_timeseries_index = 0 # Réinitialiser l'index de recherche
+        if data:
+            print(f"📊 Données temporelles reçues par le lecteur: {len(data)} points.")
+
     def on_detach_player(self):
         print("🗗 Détachement demandé")
         self.detach_requested.emit()
 
     def toggle_play_pause(self):
-        if not self._player_initialized:
-            return
-
         if self.controls.is_playing:
-            self.media_player.play()
+            self.video_thread.play()
         else:
-            self.media_player.pause()
-        
+            self.video_thread.pause()
         self.play_pause_clicked.emit()
 
-    def grab_frame(self) -> None:
-        if not self._player_initialized:
-            print("❌ Lecteur non initialisé")
-            return
+    def on_speed_changed(self, speed: float):
+        self.video_thread.set_speed(speed)
 
-        if not self.video_widget.isVisible() or self.video_widget.size().isEmpty():
-            print("❌ Widget vidéo non visible")
-            return
-
-        was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-        if was_playing:
-            self.media_player.pause()
-
-        QTimer.singleShot(150, lambda: self._capture_and_resume(was_playing))
-
-    def _capture_and_resume(self, resume_playing):
-        video_frame = self.media_player.videoSink().videoFrame()
-        if video_frame.isValid():
-            image = video_frame.toImage()
-            pixmap = QPixmap.fromImage(image)
-            self.frame_captured.emit(pixmap)
-            print("✅ Frame capturée")
-        else:
-            print("❌ Frame invalide")
-
-        if resume_playing:
-            self.media_player.play()
-
-    def on_position_changed(self, position):
-        if not self._player_initialized:
-            return
-
-        if self.duration > 0:
-            slider_pos = int((position / self.duration) * 1000)
-            self.timeline.blockSignals(True)
-            self.timeline.set_position(slider_pos)
-            self.timeline.blockSignals(False)
-            
-        self.position_changed.emit(position)
-
-    def on_duration_changed(self, duration):
-        self.duration = duration
+    def on_timeline_pressed(self):
+        if self._player_initialized:
+            self.video_thread.pause()
 
     def on_timeline_moved(self, value):
+        if self._player_initialized and self.duration > 0:
+            target_frame = int((value / self.timeline.maximum()) * self.video_thread.total_frames)
+            self.video_thread.seek(target_frame)
+
+    def on_cropping_finished_by_child(self):
+        """Slot appelé par le widget enfant quand la capture (réussie ou non) est terminée."""
+        print("🛑 Fin du mode capture (signal enfant)")
+        # Reprendre la lecture si elle était en cours avant la capture
+        if hasattr(self, '_was_playing_before_crop') and self._was_playing_before_crop:
+            if hasattr(self.video_thread, 'is_paused') and self.video_thread.is_paused:
+                self.video_thread.play()
+                print("▶️ Reprise de la lecture")
+        self._was_playing_before_crop = False
+
+    def on_timeline_released(self):
+        if self._player_initialized and self.controls.is_playing:
+            self.video_thread.play()
+
+    def start_cropping(self):
+        """Passe le lecteur en mode sélection."""
+        print("🎯 Démarrage du mode capture")
+        self._capture_in_progress = False
+        # Mémoriser l'état et mettre en pause
+        self._was_playing_before_crop = not self.video_thread.is_paused
+        if self._was_playing_before_crop:
+            self.video_thread.pause()
+            print("⏸️ Vidéo mise en pause pour la capture")
+        self.video_widget.start_cropping_mode()
+        print("✅ Mode capture activé - dessinez un rectangle sur la vidéo")
+
+    def grab_frame(self, crop_rect: QRect = None) -> None:
+        """Capture la frame actuelle avec OpenCV."""
+        print(f"📸 Capture frame OpenCV: zone={crop_rect}")
+        
+        # Protection contre les captures multiples
+        if hasattr(self, '_capture_in_progress') and self._capture_in_progress:
+            print("⚠️ Capture déjà en cours, annulation")
+            return
+
+        pixmap_to_capture = self.video_widget.get_current_pixmap_for_capture()
+        self._capture_in_progress = True
+        
+        # CORRECTION: Utiliser la frame OpenCV stockée dans VideoPlayer (self.current_cv_frame)
+        # et non une frame inexistante sur le widget d'affichage.
+        if self.current_cv_frame is None:
+            print("❌ Aucune frame OpenCV disponible pour la capture.")
+            return
+        frame = self.current_cv_frame.copy()
+        
+        if crop_rect:
+            # Calculer les proportions entre le widget et la frame originale
+            widget_size = self.video_widget.size()
+            frame_height, frame_width = frame.shape[:2]
+            
+            # Facteurs d'échelle
+            scale_x = frame_width / widget_size.width()
+            scale_y = frame_height / widget_size.height()
+            
+            # Convertir les coordonnées du widget vers la frame originale
+            x1 = int(crop_rect.x() * scale_x)
+            y1 = int(crop_rect.y() * scale_y)
+            x2 = int((crop_rect.x() + crop_rect.width()) * scale_x)
+            y2 = int((crop_rect.y() + crop_rect.height()) * scale_y)
+            
+            # S'assurer que les coordonnées sont dans les limites
+            x1 = max(0, min(x1, frame_width))
+            y1 = max(0, min(y1, frame_height))
+            x2 = max(0, min(x2, frame_width))
+            y2 = max(0, min(y2, frame_height))
+            
+            # Extraire la zone
+            if x2 > x1 and y2 > y1:
+                # CORRECTION: Forcer une copie contiguë de la mémoire après le découpage.
+                # Le slicing NumPy peut retourner une "vue" non contiguë, ce qui cause une
+                # TypeError avec QImage. .copy() résout ce problème.
+                frame = frame[y1:y2, x1:x2].copy()
+                print(f"✂️ Zone extraite: ({x1},{y1}) -> ({x2},{y2})")
+            else:
+                print("❌ Zone de capture invalide")
+                self._capture_in_progress = False
+                return
+        
+        # Convertir la frame (potentiellement recadrée) en QPixmap
+        height, width, channel = frame.shape
+        bytes_per_line = 3 * width
+        q_image = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
+        final_pixmap = QPixmap.fromImage(q_image)
+        
+        self.frame_captured.emit(final_pixmap)
+        print(f"✅ Frame OpenCV capturée: {final_pixmap.size()}")
+        
+        # Marquer la capture terminée
+        self._capture_in_progress = False
+
+    def keyPressEvent(self, event):
+        # Transférer l'événement d'échappement à l'enfant s'il est en mode capture
+        if self.video_widget.is_cropping and event.key() == Qt.Key.Key_Escape:
+            self.video_widget.is_cropping = False # Arrêter le mode capture
+            self.on_cropping_finished_by_child()
+            print("🖱️ Sélection de zone annulée.")
+            self.video_widget.update()
+        else:
+            super().keyPressEvent(event)
+
+    def on_position_changed(self, position_ms):
+        """Appelé quand la position change dans OpenCV (en millisecondes)."""
         if not self._player_initialized:
             return
 
-        if self.duration > 0:
-            position = int((value / 1000) * self.duration)
-            self.media_player.setPosition(position)
+        if not self.timeline.isSliderDown():
+            self.timeline.blockSignals(True)
+            self.timeline.setValue(position_ms)
+            self.timeline.blockSignals(False)
+            self.position_changed.emit(position_ms)
 
-    def seek_backward(self):
-        if not self._player_initialized:
-            return
-        self.media_player.setPosition(max(0, self.media_player.position() - 10000))
-        print("⏪ Recul de 10s")
+    def on_duration_changed(self, duration_ms):
+        """Appelé quand la durée est connue (en millisecondes)."""
+        self.duration = duration_ms
+        self.timeline.setMaximum(duration_ms)
+        print(f"⏱️ Durée OpenCV: {duration_ms}ms")
 
     def seek_forward(self):
         if not self._player_initialized:
+            print("seek_forward: Player not initialized")
             return
-        self.media_player.setPosition(min(self.duration, self.media_player.position() + 10000))
-        print("⏩ Avance de 10s")
+        if self.video_thread.total_frames > 0:
+            new_frame = min(self.video_thread.total_frames - 1, self.video_thread.current_frame + int(10 * self.video_thread.fps))
+            self.video_thread.seek(new_frame)
+            print("⏩ Avance de 10s")
+    def seek_backward(self):
+        if not self._player_initialized:
+            print("seek_backward: Player not initialized")
+            return
+        if self.video_thread.total_frames > 0:
+            new_frame = max(0, self.video_thread.current_frame - int(10 * self.video_thread.fps))
+            self.video_thread.seek(new_frame)
+        print("⏪ Recul de 10s")
 
     def resizeEvent(self, event):
+        """Redessine lors du redimensionnement."""
         super().resizeEvent(event)
-        if hasattr(self, 'metadata_overlay'):
-            self.metadata_overlay.setGeometry(0, 0, self.video_widget.width(), self.video_widget.height())
-        if hasattr(self, 'fullscreen_btn'):
-            btn_x = self.video_widget.width() - self.fullscreen_btn.width() - 10
-            btn_y = self.video_widget.height() - self.fullscreen_btn.height() - 10
-            self.fullscreen_btn.move(btn_x, btn_y)
-            
+        self.update()
+
+    def toggle_metadata_overlay(self, checked):
+        """Affiche ou cache le panneau des métadonnées sur la vidéo."""
+        self.video_widget.toggle_metadata(checked)
+
     def update_metadata(self, **kwargs):
-        self.metadata_overlay.update_metadata(**kwargs)
+        """Reçoit les métadonnées STATIQUES (du JSON) et les stocke."""
+        self.static_metadata = kwargs
+        # On ne met pas à jour le widget directement, update_timeseries_metadata s'en charge
+        print(f"ℹ️ Métadonnées statiques reçues: {self.static_metadata}")
         
     def add_timeline_marker(self, position):
         self.timeline.add_marker(position)
         
     def clear_timeline_markers(self):
         self.timeline.clear_markers()
-    
-    def on_media_status_changed(self, status):
-        if not self._player_initialized:
-            return
-
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.controls.update_play_pause_button(False)
-            print("📹 Fin de la vidéo")
 
 
 # Test

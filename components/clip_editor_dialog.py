@@ -28,16 +28,16 @@ class ClipEditorDialog(QDialog):
         self.init_ui()
 
         if not self.video_path:
-            QMessageBox.critical(self, "Erreur", "Aucun chemin de vidéo fourni.")
+            QMessageBox.critical(self, "Erreur", "Aucun chemin de vidÃ©o fourni.")
             self.reject()
         else:
             # On charge la vidéo en demandant de ne pas la mettre en pause
             self.video_player.load_video(self.video_path, autoplay=False)
             # Une fois la vidéo chargée, la durée sera connue.
-            # On connecte le signal durationChanged pour configurer les poignées.
-            self.video_player.media_player.durationChanged.connect(self.setup_selection_handles)
-            # On connecte positionChanged pour forcer la boucle dans la sélection.
-            self.video_player.media_player.positionChanged.connect(self.check_playback_bounds)
+            # On connecte le signal duration_changed du thread vidéo.
+            self.video_player.video_thread.duration_changed.connect(self.setup_selection_handles)
+            # On connecte position_changed pour forcer la boucle dans la sélection.
+            self.video_player.video_thread.position_changed.connect(self.check_playback_bounds)
 
     def init_ui(self):
         """Initialise l'interface utilisateur du dialogue."""
@@ -48,7 +48,9 @@ class ClipEditorDialog(QDialog):
         # Lecteur vidéo
         self.video_player = VideoPlayer()
         self.timeline = self.video_player.timeline
-        self.timeline.selection_changed.connect(self.update_time_labels)
+        # Connecter le signal de changement de sélection à deux slots
+        self.timeline.selection_changed.connect(self.update_time_labels) # Pour les labels de temps
+        self.timeline.selection_changed.connect(self.preview_frame_at_handle) # Pour l'aperçu visuel
         main_layout.addWidget(self.video_player, stretch=1)
 
         # Panneau de contrôle en bas
@@ -67,7 +69,7 @@ class ClipEditorDialog(QDialog):
 
         # Affichage des temps de début et de fin
         time_display_layout = QHBoxLayout()
-        time_display_layout.addWidget(QLabel("Début :"))
+        time_display_layout.addWidget(QLabel("DÃ©but :"))
         self.start_time_label = QLabel("00:00.000")
         self.start_time_label.setStyleSheet("font-weight: bold; color: #2196F3;")
         time_display_layout.addWidget(self.start_time_label)
@@ -107,13 +109,14 @@ class ClipEditorDialog(QDialog):
         # Mettre à jour les labels une première fois
         self.update_time_labels(self.timeline.start_handle_pos, self.timeline.end_handle_pos)
         
-        # On attend un court instant que la fenêtre soit bien affichée avant de se positionner et de jouer
+        # On attend un court instant que la fenÃªtre soit bien affichÃ©e avant de se positionner et de jouer
         QTimer.singleShot(100, self.start_playback_at_selection)
 
     def start_playback_at_selection(self):
         """Se positionne au début de la sélection et lance la lecture."""
-        self.video_player.media_player.setPosition(self.initial_start_ms)
-        self.video_player.media_player.play()
+        target_frame = int((self.initial_start_ms / self.video_player.duration) * self.video_player.video_thread.total_frames)
+        self.video_player.video_thread.seek(target_frame)
+        self.video_player.video_thread.play()
         
     def update_time_labels(self, start_pos_1000, end_pos_1000):
         """Met à jour les labels de temps quand les poignées bougent."""
@@ -125,6 +128,31 @@ class ClipEditorDialog(QDialog):
 
         self.start_time_label.setText(f"{start_ms // 60000:02d}:{(start_ms % 60000) // 1000:02d}.{start_ms % 1000:03d}")
         self.end_time_label.setText(f"{end_ms // 60000:02d}:{(end_ms % 60000) // 1000:02d}.{end_ms % 1000:03d}")
+
+    def preview_frame_at_handle(self, start_pos_1000, end_pos_1000):
+        """
+        Met à jour l'image affichée pour correspondre à la position de la poignée
+        en cours de déplacement.
+        """
+        # Mettre la vidéo en pause si ce n'est pas déjà fait
+        if not self.video_player.video_thread.is_paused:
+            self.video_player.video_thread.pause()
+
+        duration_ms = self.video_player.duration
+        if duration_ms <= 0: return
+
+        # Déterminer quelle poignée est en train d'être déplacée
+        handle_being_dragged = self.timeline.dragging_handle # 'start' ou 'end'
+        
+        if handle_being_dragged == 'start':
+            target_ms = int((start_pos_1000 / 1000.0) * duration_ms)
+        elif handle_being_dragged == 'end':
+            target_ms = int((end_pos_1000 / 1000.0) * duration_ms)
+        else:
+            return # Aucune poignée n'est déplacée
+
+        target_frame = int((target_ms / duration_ms) * self.video_player.video_thread.total_frames)
+        self.video_player.video_thread.seek(target_frame)
 
     def check_playback_bounds(self, position_ms):
         """
@@ -139,7 +167,8 @@ class ClipEditorDialog(QDialog):
 
         # Si la position actuelle dépasse la borne de fin
         if position_ms >= end_ms:
-            self.video_player.media_player.setPosition(start_ms)
+            target_frame = int((start_ms / self.video_player.duration) * self.video_player.video_thread.total_frames)
+            self.video_player.video_thread.seek(target_frame)
 
     def get_values(self):
         """Retourne le nom, et les temps de début/fin en ms."""
@@ -159,10 +188,10 @@ class ClipEditorDialog(QDialog):
             QMessageBox.warning(self, "Plage invalide", "La borne de début doit être avant la borne de fin.")
             return
         self.accept()
-
+        
     def closeEvent(self, event):
         """S'assure que le lecteur est arrêté à la fermeture."""
-        if self.video_player and self.video_player.media_player:
-            self.video_player.media_player.stop()
-            self.video_player.media_player.setSource(QUrl())
+        if self.video_player and self.video_player.video_thread:
+            self.video_player.video_thread.stop()
+            self.video_player.video_thread.wait(500) # Attendre un peu que le thread se termine
         super().closeEvent(event)
