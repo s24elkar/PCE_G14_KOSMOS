@@ -58,6 +58,8 @@ docker run --rm kosmos python -m kosmos_processing.visualize path/to/video.mp4 -
 
 Note : le Dockerfile installe les dépendances graphiques minimales et force `QT_QPA_PLATFORM=offscreen` / `MPLBACKEND=Agg` pour tourner sans affichage. Pour un affichage natif, montez votre serveur X/Wayland ou désactivez `QT_QPA_PLATFORM`.
 
+CD : lors d’un `push` (branches main/master ou tag `v*`), le workflow pousse l’image sur GHCR avec le tag `latest` ou le tag git (`ghcr.io/<OWNER>/kosmos:<tag>`), et publie les artefacts `sdist/wheel` en sortie de workflow.
+
 ## Installation et lancement GUI
 
 Pré-requis système :
