@@ -12,6 +12,7 @@ import sys
 import time
 import cv2
 import numpy as np
+from collections import OrderedDict
 
 
 class VideoThread(QThread):
@@ -644,14 +645,16 @@ class VideoPlayer(QWidget):
     position_changed = pyqtSignal(int)
     frame_captured = pyqtSignal(QPixmap)
     detach_requested = pyqtSignal()
+    histogram_data_ready = pyqtSignal(list, list, list, list) # AJOUT: R, G, B, Densité
     
+    filters_reset = pyqtSignal() # Signal pour notifier que les filtres ont été réinitialisés
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duration = 0
         
         # --- OpenCV Video Thread ---
         self.video_thread = VideoThread()
-        self.video_thread.frame_ready.connect(self.on_frame_ready)
         self.video_thread.position_changed.connect(self.on_position_changed)
         self.video_thread.position_changed.connect(self.update_timeseries_metadata)  # AJOUT pour métadonnées
         self.video_thread.duration_changed.connect(self.on_duration_changed)
@@ -666,8 +669,54 @@ class VideoPlayer(QWidget):
         self._player_initialized = False # Attribut pour savoir si une vidéo est chargée
         self._was_playing_before_crop = False
         self._capture_in_progress = False
+
+        # --- GESTION DES FILTRES D'IMAGE ---
+        self.active_filters = OrderedDict()
+        self.video_thread.frame_ready.connect(self.on_frame_ready)
         
         self.init_ui()
+
+    # --- MÉTHODES DE GESTION DES FILTRES ---
+    def toggle_filter(self, name: str, filter_func: callable, activate: bool, **kwargs):
+        """Active ou désactive un filtre."""
+        if activate:
+            self.active_filters[name] = (filter_func, kwargs)
+        elif name in self.active_filters:
+            del self.active_filters[name]
+        
+        # Appliquer immédiatement le changement sur l'image actuelle
+        self._apply_filters_to_current_frame()
+
+    def reset_filters(self):
+        """Réinitialise tous les filtres actifs."""
+        self.active_filters.clear()
+        self._apply_filters_to_current_frame()
+        self.filters_reset.emit() # Notifier la vue pour décocher les boutons
+
+    def is_filter_active(self, name: str) -> bool:
+        """Vérifie si un filtre est actif."""
+        return name in self.active_filters
+
+    def _apply_filters_to_current_frame(self):
+        """Applique la chaîne de filtres à la frame actuelle et met à jour l'affichage."""
+        if self.current_cv_frame is not None:
+            self.on_frame_ready(self.current_cv_frame)
+
+    def _calculate_and_emit_histogram(self, frame: np.ndarray):
+        """Calcule l'histogramme de la frame et émet le signal."""
+        try:
+            # Calculer l'histogramme pour chaque canal
+            b_hist = cv2.calcHist([frame], [0], None, [256], [0, 256]).flatten().tolist()
+            g_hist = cv2.calcHist([frame], [1], None, [256], [0, 256]).flatten().tolist()
+            r_hist = cv2.calcHist([frame], [2], None, [256], [0, 256]).flatten().tolist()
+
+            # Calculer l'histogramme de luminance pour la densité
+            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            density_hist = cv2.calcHist([gray_frame], [0], None, [256], [0, 256]).flatten().tolist()
+
+            self.histogram_data_ready.emit(r_hist, g_hist, b_hist, density_hist)
+        except Exception as e:
+            print(f"❌ Erreur calcul histogramme: {e}")
 
     def closeEvent(self, event):
         """S'assure que le thread est bien arrêté à la fermeture."""
@@ -675,9 +724,21 @@ class VideoPlayer(QWidget):
         self.video_thread.wait()
 
     def on_frame_ready(self, frame):
-        """Appelé quand une nouvelle frame est prête depuis OpenCV."""
-        self.current_cv_frame = frame # Stocker la frame brute
-        self.video_widget.update_frame(frame)
+        """Reçoit la frame brute, applique les filtres et l'affiche."""
+        self.current_cv_frame = frame.copy() # Stocker la frame brute originale
+        
+        processed_frame = frame
+        if self.active_filters:
+            for name, (filter_func, kwargs) in self.active_filters.items():
+                try:
+                    processed_frame = filter_func(processed_frame, **kwargs)
+                except Exception as e:
+                    print(f"❌ Erreur en appliquant le filtre '{name}': {e}")
+        
+        # Calculer et émettre les données de l'histogramme de l'image traitée
+        self._calculate_and_emit_histogram(processed_frame)
+
+        self.video_widget.update_frame(processed_frame)
 
     def init_ui(self):
         main_layout = QVBoxLayout()

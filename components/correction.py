@@ -1,9 +1,11 @@
 """
 Composant Correction des Images
-Contrôles pour correction couleurs, contraste et luminosité
+Contrôles pour correction couleurs, contraste, luminosité et filtres avancés
 """
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QSlider, QPushButton)
+import numpy as np
+from typing import Optional # AJOUT
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
+                             QPushButton, QGroupBox, QGridLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 
@@ -16,7 +18,7 @@ class ColorCorrectionButton(QPushButton):
         
     def init_ui(self):
         self.setText("🎨   Correction couleurs")
-        self.setFixedHeight(50)
+        self.setFixedHeight(40)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet("""
             QPushButton {
@@ -24,7 +26,7 @@ class ColorCorrectionButton(QPushButton):
                 color: white;
                 border: 2px solid white;
                 border-radius: 8px;
-                padding: 10px 15px;
+                padding: 8px 12px;
                 text-align: left;
                 font-size: 14px;
                 font-weight: 500;
@@ -54,8 +56,8 @@ class LabeledSlider(QWidget):
         
     def init_ui(self):
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 5, 0, 5)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 2, 0, 5)
+        layout.setSpacing(4)
         
         # Label
         label = QLabel(self.label_text)
@@ -113,6 +115,59 @@ class LabeledSlider(QWidget):
         self.slider.setValue(self.default_value)
 
 
+class CurveEditor(QWidget):
+    """
+    Éditeur de courbe simple : 3 points (ombres/médiums/hautes lumières) pour générer une LUT.
+    """
+    curve_changed = pyqtSignal(list)
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None: # MODIFICATION
+        super().__init__(parent)
+        self._lut = list(range(256))
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        main_layout = QVBoxLayout(self) # Appliquer le layout directement au widget
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(4)
+
+        title = QLabel("Courbe tonale")
+        title.setStyleSheet("color: white; font-weight: bold; font-size: 14px;")
+        main_layout.addWidget(title)
+
+        sliders = QGridLayout()
+        sliders.setContentsMargins(0, 5, 0, 0)
+        sliders.setHorizontalSpacing(10)
+
+        self.shadow_slider = LabeledSlider("Ombres", -80, 80, 0)
+        self.mid_slider = LabeledSlider("Tons moyens", -80, 80, 0)
+        self.highlight_slider = LabeledSlider("Hautes lumières", -80, 80, 0)
+
+        self.shadow_slider.value_changed.connect(self._emit_curve)
+        self.mid_slider.value_changed.connect(self._emit_curve)
+        self.highlight_slider.value_changed.connect(self._emit_curve)
+
+        sliders.addWidget(self.shadow_slider, 0, 0)
+        sliders.addWidget(self.mid_slider, 0, 1)
+        sliders.addWidget(self.highlight_slider, 1, 0, 1, 2)
+
+        main_layout.addLayout(sliders)
+
+    def reset(self) -> None:
+        for slider in (self.shadow_slider, self.mid_slider, self.highlight_slider):
+            slider.reset()
+
+    def _emit_curve(self) -> None:
+        shadows = np.clip(0 + self.shadow_slider.get_value(), 0, 255)
+        mids = np.clip(128 + self.mid_slider.get_value(), 0, 255)
+        highs = np.clip(255 + self.highlight_slider.get_value(), 0, 255)
+        x = np.array([0, 128, 255], dtype=np.float32)
+        y = np.array([shadows, mids, highs], dtype=np.float32)
+        lut = np.interp(np.arange(256, dtype=np.float32), x, y)
+        lut = np.clip(lut, 0, 255).astype(np.uint8)
+        self.curve_changed.emit(lut.tolist())
+
+
 class ImageCorrection(QWidget):
     """
     Composant Correction des Images
@@ -123,6 +178,17 @@ class ImageCorrection(QWidget):
     color_correction_clicked = pyqtSignal()
     contrast_changed = pyqtSignal(int)
     brightness_changed = pyqtSignal(int)
+    # NOUVEAUX SIGNAUX POUR LES FILTRES
+    gamma_toggled = pyqtSignal(bool)
+    contrast_clahe_toggled = pyqtSignal(bool)
+    denoise_toggled = pyqtSignal(bool)
+    sharpen_toggled = pyqtSignal(bool)
+    filters_reset_clicked = pyqtSignal()
+    saturation_changed = pyqtSignal(int)
+    hue_changed = pyqtSignal(int)
+    temperature_changed = pyqtSignal(int)
+    curve_changed = pyqtSignal(list)
+
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -153,14 +219,9 @@ class ImageCorrection(QWidget):
         # Container pour les contrôles
         controls_container = QWidget()
         controls_layout = QVBoxLayout()
-        controls_layout.setContentsMargins(15, 15, 15, 15)
-        controls_layout.setSpacing(20)
+        controls_layout.setContentsMargins(15, 10, 15, 10)
+        controls_layout.setSpacing(10)
         controls_container.setStyleSheet("background-color: black;")
-        
-        # Bouton Correction couleurs
-        self.color_btn = ColorCorrectionButton()
-        self.color_btn.clicked.connect(self.color_correction_clicked.emit)
-        controls_layout.addWidget(self.color_btn)
         
         # Slider Contraste
         self.contrast_slider = LabeledSlider("Contraste", -100, 100, 0)
@@ -171,11 +232,127 @@ class ImageCorrection(QWidget):
         self.brightness_slider = LabeledSlider("Luminosité", -100, 100, 0)
         self.brightness_slider.value_changed.connect(self.brightness_changed.emit)
         controls_layout.addWidget(self.brightness_slider)
+
+        # NOUVEAU : Groupe pour les filtres de couleur
+        color_filters_group = QGroupBox("Filtres de couleur")
+        color_filters_group.setStyleSheet("""
+            QGroupBox {
+                background-color: black;
+                border: 2px solid white;
+                border-radius: 5px;
+                margin-top: 1ex;
+                font-weight: bold;
+                color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 3px;
+                color: white;
+            }
+        """)
+        color_filters_layout = QVBoxLayout(color_filters_group)
+        color_filters_layout.setSpacing(6)
+        color_filters_layout.setContentsMargins(8, 15, 8, 8)
+
+        # Sliders de couleur
+        color_sliders_layout = QGridLayout()
+        color_sliders_layout.setHorizontalSpacing(10)
+
+        self.saturation_slider = LabeledSlider("Saturation", -100, 100, 0)
+        self.saturation_slider.value_changed.connect(self.saturation_changed.emit)
+        color_sliders_layout.addWidget(self.saturation_slider, 0, 0)
+
+        self.hue_slider = LabeledSlider("Teinte", -90, 90, 0)
+        self.hue_slider.value_changed.connect(self.hue_changed.emit)
+        color_sliders_layout.addWidget(self.hue_slider, 0, 1)
+
+        self.temperature_slider = LabeledSlider("Température", -100, 100, 0)
+        self.temperature_slider.value_changed.connect(self.temperature_changed.emit)
+        color_sliders_layout.addWidget(self.temperature_slider, 1, 0, 1, 2)
+
+        color_filters_layout.addLayout(color_sliders_layout)
+
+        # Séparateur
+        separator = QWidget()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background-color: #444; margin-top: 5px; margin-bottom: 5px;")
+        color_filters_layout.addWidget(separator)
+
+        # Éditeur de courbe
+        self.curve_editor = CurveEditor()
+        self.curve_editor.curve_changed.connect(self.curve_changed.emit)
+        color_filters_layout.addWidget(self.curve_editor)
+
+        controls_layout.addWidget(color_filters_group)
+
+        
+        # NOUVEAU : Groupe de boutons pour les filtres d'image avancés
+        self.filters_groupbox = QGroupBox("Filtres avancés")
+        self.filters_groupbox.setStyleSheet("""
+            QGroupBox {
+                background-color: black;
+                border: 2px solid white;
+                border-radius: 5px;
+                margin-top: 1ex; /* Espace pour le titre */
+                font-weight: bold;
+                color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left; /* Position du titre */
+                padding: 0 3px;
+                color: white;
+            }
+            QPushButton {
+                background-color: #444;
+                color: white;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #555;
+            }
+            QPushButton:checked {
+                background-color: #2196F3; /* Couleur bleue pour les filtres actifs */
+                border-color: #2196F3;
+            }
+        """)
+        filters_layout = QVBoxLayout(self.filters_groupbox)
+        filters_layout.setSpacing(6)
+        filters_layout.setContentsMargins(8, 8, 8, 8)
+        
+        self.btn_gamma = QPushButton("Correction Gamma")
+        self.btn_gamma.setCheckable(True)
+        self.btn_gamma.toggled.connect(self.gamma_toggled.emit)
+        
+        self.btn_contrast_clahe = QPushButton("Contraste (CLAHE)")
+        self.btn_contrast_clahe.setCheckable(True)
+        self.btn_contrast_clahe.toggled.connect(self.contrast_clahe_toggled.emit)
+        
+        self.btn_denoise = QPushButton("Anti-bruit")
+        self.btn_denoise.setCheckable(True)
+        self.btn_denoise.toggled.connect(self.denoise_toggled.emit)
+        
+        self.btn_sharpen = QPushButton("Netteté")
+        self.btn_sharpen.setCheckable(True)
+        self.btn_sharpen.toggled.connect(self.sharpen_toggled.emit)
+        
+        self.btn_reset_filters = QPushButton("Réinitialiser Filtres")
+        self.btn_reset_filters.clicked.connect(self.filters_reset_clicked.emit)
+        
+        filters_layout.addWidget(self.btn_gamma)
+        filters_layout.addWidget(self.btn_contrast_clahe)
+        filters_layout.addWidget(self.btn_denoise)
+        filters_layout.addWidget(self.btn_sharpen)
+        filters_layout.addWidget(self.btn_reset_filters)
+        
+        controls_layout.addWidget(self.filters_groupbox)
         
         controls_layout.addStretch()
         
         controls_container.setLayout(controls_layout)
-        controls_container.setStyleSheet("background-color: black;")
         
         main_layout.addWidget(controls_container)
         
@@ -189,6 +366,16 @@ class ImageCorrection(QWidget):
         """Réinitialise tous les contrôles"""
         self.contrast_slider.reset()
         self.brightness_slider.reset()
+        # Réinitialiser l'état des boutons de filtre
+        self.btn_gamma.setChecked(False)
+        self.btn_contrast_clahe.setChecked(False)
+        self.btn_denoise.setChecked(False)
+        self.btn_sharpen.setChecked(False)
+        # Réinitialiser les nouveaux sliders et la courbe
+        self.saturation_slider.reset()
+        self.hue_slider.reset()
+        self.temperature_slider.reset()
+        self.curve_editor.reset()
         
     def get_contrast(self):
         """Retourne la valeur du contraste"""
@@ -205,6 +392,15 @@ class ImageCorrection(QWidget):
     def set_brightness(self, value):
         """Définit la valeur de la luminosité"""
         self.brightness_slider.set_value(value)
+
+    def update_filter_buttons_state(self, states: dict):
+        """
+        Met à jour l'état (coché/décoché) des boutons de filtre.
+        """
+        self.btn_gamma.setChecked(states.get('gamma', False))
+        self.btn_contrast_clahe.setChecked(states.get('contrast', False))
+        self.btn_denoise.setChecked(states.get('denoise', False))
+        self.btn_sharpen.setChecked(states.get('sharpen', False))
 
 
 # Exemple d'utilisation

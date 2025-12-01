@@ -7,6 +7,8 @@ import datetime
 import csv # AJOUT
 import json
 import sys
+import cv2
+import numpy as np
 import subprocess
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -15,6 +17,105 @@ from PyQt6.QtWidgets import QInputDialog
 # Ajout du chemin racine pour les imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+class UnderwaterFilters:
+    """
+    Collection de filtres rapides (vectorisés) pour améliorer des images sous-marines.
+    Les méthodes opèrent sur des frames BGR (numpy.ndarray uint8).
+    """
+
+    @staticmethod
+    def correct_blue_dominance(frame: np.ndarray, factor: float = 0.12) -> np.ndarray:
+        """
+        Réduit une dominante bleue en renforçant légèrement les canaux R et G.
+        :param factor: intensité de correction (0.12 => +12% sur R/G).
+        """
+        r, g, b = cv2.split(frame)
+        r = cv2.add(r, (r * factor).astype(np.uint8))
+        g = cv2.add(g, (g * factor).astype(np.uint8))
+        corrected = cv2.merge((r, g, b))
+        return np.clip(corrected, 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def apply_gamma(frame: np.ndarray, gamma: float = 1.2) -> np.ndarray:
+        """
+        Correction gamma via table de correspondance.
+        gamma > 1 éclaircit les tons moyens.
+        """
+        gamma = max(gamma, 0.01)
+        inv_gamma = 1.0 / gamma
+        table = np.array([(i / 255.0) ** inv_gamma * 255 for i in np.arange(256)]).astype("uint8")
+        return cv2.LUT(frame, table)
+
+    @staticmethod
+    def enhance_contrast(frame: np.ndarray, clip_limit: float = 2.0, tile_grid: tuple[int, int] = (8, 8)) -> np.ndarray:
+        """
+        Améliore le contraste local via CLAHE sur la luminance (Y dans YCrCb).
+        """
+        ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+        y, cr, cb = cv2.split(ycrcb)
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid)
+        y = clahe.apply(y)
+        merged = cv2.merge((y, cr, cb))
+        return cv2.cvtColor(merged, cv2.COLOR_YCrCb2BGR)
+
+    @staticmethod
+    def denoise(frame: np.ndarray, h: float = 10.0) -> np.ndarray:
+        return cv2.fastNlMeansDenoisingColored(frame, None, h, h, 7, 21)
+
+    @staticmethod
+    def sharpen(frame: np.ndarray) -> np.ndarray:
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+        return cv2.filter2D(frame, -1, kernel)
+
+    @staticmethod
+    def apply_contrast_brightness(frame: np.ndarray, contrast: int, brightness: int) -> np.ndarray:
+        """Ajuste le contraste et la luminosité. contrast/brightness de -100 à 100."""
+        alpha = 1.0 + contrast / 100.0  # Facteur de contraste
+        beta = brightness  # Décalage de luminosité
+        adjusted = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
+        return adjusted
+
+    @staticmethod
+    def apply_saturation(frame: np.ndarray, value: int) -> np.ndarray:
+        """Ajuste la saturation. value de -100 à 100."""
+        if value == 0: return frame
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        factor = 1.0 + value / 100.0
+        s = np.clip(s * factor, 0, 255).astype(np.uint8)
+        hsv = cv2.merge([h, s, v])
+        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    @staticmethod
+    def apply_hue(frame: np.ndarray, value: int) -> np.ndarray:
+        """Ajuste la teinte. value de -90 à 90."""
+        if value == 0: return frame
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        # L'échelle de teinte dans OpenCV est 0-179
+        h = (h.astype(np.int32) + value) % 180
+        hsv = cv2.merge([h.astype(np.uint8), s, v])
+        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    @staticmethod
+    def apply_temperature(frame: np.ndarray, value: int) -> np.ndarray:
+        """Ajuste la température de couleur. value de -100 (froid) à 100 (chaud)."""
+        if value == 0: return frame
+        # Convertir la valeur en un ajustement pour les canaux bleu et rouge
+        blue_factor = 1.0 - (value / 200.0 if value < 0 else 0)
+        red_factor = 1.0 + (value / 200.0 if value > 0 else 0)
+        b, g, r = cv2.split(frame)
+        b = np.clip(b * blue_factor, 0, 255).astype(np.uint8)
+        r = np.clip(r * red_factor, 0, 255).astype(np.uint8)
+        return cv2.merge([b, g, r])
+
+    @staticmethod
+    def apply_lut(frame: np.ndarray, lut: list) -> np.ndarray:
+        """Applique une table de correspondance (Look-Up Table)."""
+        if len(lut) != 256: return frame
+        table = np.array(lut, dtype=np.uint8)
+        return cv2.LUT(frame, table)
 
 class ExtractionKosmosController(QObject):
     """
@@ -266,9 +367,6 @@ class ExtractionKosmosController(QObject):
 
         # Demander à la vue de charger cette vidéo
         self.view.update_video_player(video_data)
-        
-        # Réinitialiser l'histogramme (simulation)
-        self.view.update_histogram()
 
     # ═══════════════════════════════════════════════════════════════
     # CONTRÔLE DU LECTEUR
@@ -379,16 +477,78 @@ class ExtractionKosmosController(QObject):
     def on_contrast_changed(self, value):
         """Gère le slider de contraste"""
         self.contrast = value
-        print(f"🌗 Contraste modifié : {value}")
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('contrast_base', UnderwaterFilters.apply_contrast_brightness, value != 0 or self.brightness != 0, contrast=self.contrast, brightness=self.brightness)
 
     def on_brightness_changed(self, value):
         """Gère le slider de luminosité"""
         self.brightness = value
-        print(f"🔆 Luminosité modifiée : {value}")
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('contrast_base', UnderwaterFilters.apply_contrast_brightness, self.contrast != 0 or value != 0, contrast=self.contrast, brightness=self.brightness)
 
     def on_color_correction(self):
         """Ouvre ou applique la correction colorimétrique automatique"""
-        print("🎨 Correction colorimétrique auto demandée")
+        if not self.view or not hasattr(self.view, 'video_player'):
+            return
+
+        # Appliquer une chaîne de filtres par défaut
+        self.view.video_player.toggle_filter('gamma', UnderwaterFilters.apply_gamma, True, gamma=1.2)
+        self.view.video_player.toggle_filter('blue_correction', UnderwaterFilters.correct_blue_dominance, True, factor=0.15)
+        self.view.video_player.toggle_filter('contrast', UnderwaterFilters.enhance_contrast, True, clip_limit=1.5)
+        
+        # Mettre à jour l'état des boutons de filtre dans le composant ImageCorrection
+        self.view.image_correction.update_filter_buttons_state({
+            'gamma': True,
+            'blue_correction': True,
+            'contrast': True,
+            'denoise': self.view.video_player.is_filter_active('denoise'),
+            'sharpen': self.view.video_player.is_filter_active('sharpen')
+        })
+        self.view.show_message("Correction automatique appliquée.", "success")
+
+    def on_toggle_gamma(self, toggled):
+        """Active ou désactive la correction gamma."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('gamma', UnderwaterFilters.apply_gamma, toggled, gamma=1.2)
+
+    def on_toggle_contrast(self, toggled):
+        """Active ou désactive l'amélioration du contraste."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('contrast', UnderwaterFilters.enhance_contrast, toggled, clip_limit=1.5)
+
+    def on_toggle_denoise(self, toggled):
+        """Active ou désactive la réduction de bruit."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('denoise', UnderwaterFilters.denoise, toggled, h=10.0)
+
+    def on_toggle_sharpen(self, toggled):
+        """Active ou désactive le filtre de netteté."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('sharpen', UnderwaterFilters.sharpen, toggled)
+
+    def on_reset_filters(self):
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.reset_filters()
+
+    def on_saturation_changed(self, value):
+        """Gère le slider de saturation."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('saturation', UnderwaterFilters.apply_saturation, value != 0, value=value)
+
+    def on_hue_changed(self, value):
+        """Gère le slider de teinte."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('hue', UnderwaterFilters.apply_hue, value != 0, value=value)
+
+    def on_temperature_changed(self, value):
+        """Gère le slider de température."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('temperature', UnderwaterFilters.apply_temperature, value != 0, value=value)
+
+    def on_curve_changed(self, lut):
+        """Gère le changement de la courbe tonale."""
+        if self.view and hasattr(self.view, 'video_player'):
+            self.view.video_player.toggle_filter('curve', UnderwaterFilters.apply_lut, True, lut=lut)
 
     # ═══════════════════════════════════════════════════════════════
     # OUTILS D'EXTRACTION

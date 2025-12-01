@@ -4,7 +4,7 @@ Architecture MVC pour logiciel de dérushage
 """
 import sys
 from pathlib import Path
-
+from PyQt6.QtWidgets import QPushButton, QGroupBox, QVBoxLayout
 # Ajouter le répertoire parent au path pour pouvoir importer les modules
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -278,6 +278,27 @@ class ExtractionView(QWidget):
                     self.image_correction.brightness_changed.connect(
                         self.controller.on_brightness_changed
                     )
+                # NOUVEAU : Connexion des signaux des filtres de ImageCorrection
+                self.image_correction.gamma_toggled.connect(self.controller.on_toggle_gamma)
+                self.image_correction.contrast_clahe_toggled.connect(self.controller.on_toggle_contrast)
+                self.image_correction.denoise_toggled.connect(self.controller.on_toggle_denoise)
+                self.image_correction.sharpen_toggled.connect(self.controller.on_toggle_sharpen)
+                self.image_correction.filters_reset_clicked.connect(self.controller.on_reset_filters)
+                # Connexion des nouveaux sliders de couleur et de la courbe
+                self.image_correction.saturation_changed.connect(self.controller.on_saturation_changed)
+                self.image_correction.hue_changed.connect(self.controller.on_hue_changed)
+                self.image_correction.temperature_changed.connect(self.controller.on_temperature_changed)
+                self.image_correction.curve_changed.connect(self.controller.on_curve_changed)
+
+                
+            # NOUVEAU : Connexion du signal de réinitialisation des filtres du lecteur
+            if hasattr(self, 'video_player') and hasattr(self.video_player, 'filters_reset'):
+                self.video_player.filters_reset.connect(self.on_filters_reset_by_player)
+
+            # NOUVEAU : Connexion du signal de correction automatique du composant ImageCorrection
+            if hasattr(self.image_correction, 'color_correction_clicked'):
+                self.image_correction.color_correction_clicked.connect(self.controller.on_color_correction)
+            
             
             # LECTEUR
             if hasattr(self, 'video_player'):
@@ -285,6 +306,10 @@ class ExtractionView(QWidget):
                     self.video_player.play_pause_clicked.connect(
                         self.controller.on_play_pause
                     )
+                # NOUVEAU : Connecter les données de l'histogramme du lecteur à l'affichage
+                if hasattr(self.video_player, 'histogram_data_ready') and hasattr(self, 'histogram'):
+                    self.video_player.histogram_data_ready.connect(self.histogram.update_histogram)
+
                 if hasattr(self.video_player, 'position_changed'):
                     self.video_player.position_changed.connect(
                         self.controller.on_position_changed
@@ -375,6 +400,21 @@ class ExtractionView(QWidget):
                 'brightness': self.image_correction.get_brightness() if hasattr(self.image_correction, 'get_brightness') else 0
             }
         return {'contrast': 0, 'brightness': 0}
+    
+    def update_correction_buttons_state(self, states: dict):
+        """
+        Met à jour l'état (coché/décoché) des boutons de correction.
+        Appelé par le contrôleur.
+        """
+        # Déléguer la mise à jour à l'ImageCorrection
+        if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'update_filter_buttons_state'):
+            self.image_correction.update_filter_buttons_state(states)
+
+    def on_filters_reset_by_player(self):
+        """Réinitialise l'état des boutons de filtre lorsque le lecteur signale une réinitialisation."""
+        # La réinitialisation est maintenant gérée par le composant ImageCorrection lui-même
+        if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'reset_all'):
+            self.image_correction.reset_all()
         
     def reset_corrections(self):
         """Réinitialise toutes les corrections d'image"""
