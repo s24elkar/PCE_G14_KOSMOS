@@ -18,6 +18,7 @@ from components.explorateur import MediaExplorer
 from components.lecteur import VideoPlayer
 from components.correction import ImageCorrection
 from components.histogramme import Histogram
+from components.courbe_tonale import ToneCurveEditor # AJOUT
 from components.outils_modification import ExtractionTools
 
 
@@ -181,25 +182,32 @@ class ExtractionView(QWidget):
             correction_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             bottom_layout.addWidget(correction_placeholder, stretch=1)
         
-        # Histogramme (droite)
+        # Colonne de droite sous le lecteur (Histogramme + Courbe Tonale)
+        right_bottom_widget = QWidget()
+        right_bottom_layout = QVBoxLayout(right_bottom_widget)
+        right_bottom_layout.setContentsMargins(0, 0, 0, 0)
+        right_bottom_layout.setSpacing(10)
+
         try:
             self.histogram = Histogram()
             self.histogram.setStyleSheet("""
                     background-color: #1a1a1a;
                     border: 2px solid white;
             """)
-            bottom_layout.addWidget(self.histogram, stretch=1)
+            right_bottom_layout.addWidget(self.histogram, stretch=1)
         except Exception as e:
             print(f"⚠️ Erreur chargement histogramme: {e}")
-            histogram_placeholder = QLabel("Histogramme")
-            histogram_placeholder.setStyleSheet("""
-                    background-color: #1a1a1a; 
-                    color: white; 
-                    padding: 20px;
-                    border: 4px solid white;
-            """)
-            histogram_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            bottom_layout.addWidget(histogram_placeholder, stretch=1)
+            # Placeholder
+
+        try:
+            self.tone_curve_editor = ToneCurveEditor()
+            self.tone_curve_editor.setStyleSheet("border: 2px solid white;")
+            right_bottom_layout.addWidget(self.tone_curve_editor, stretch=1)
+        except Exception as e:
+            print(f"⚠️ Erreur chargement courbe tonale: {e}")
+            # Placeholder
+
+        bottom_layout.addWidget(right_bottom_widget, stretch=1)
         
         center_right_layout.addLayout(bottom_layout, stretch=4)
         
@@ -288,7 +296,10 @@ class ExtractionView(QWidget):
                 self.image_correction.saturation_changed.connect(self.controller.on_saturation_changed)
                 self.image_correction.hue_changed.connect(self.controller.on_hue_changed)
                 self.image_correction.temperature_changed.connect(self.controller.on_temperature_changed)
-                self.image_correction.curve_changed.connect(self.controller.on_curve_changed)
+
+            # NOUVEAU : Connexion de l'éditeur de courbe séparé
+            if hasattr(self, 'tone_curve_editor'):
+                self.tone_curve_editor.curve_changed.connect(self.controller.on_curve_changed)
 
                 
             # NOUVEAU : Connexion du signal de réinitialisation des filtres du lecteur
@@ -415,6 +426,8 @@ class ExtractionView(QWidget):
         # La réinitialisation est maintenant gérée par le composant ImageCorrection lui-même
         if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'reset_all'):
             self.image_correction.reset_all()
+        if hasattr(self, 'tone_curve_editor') and hasattr(self.tone_curve_editor, 'reset'):
+            self.tone_curve_editor.reset()
         
     def reset_corrections(self):
         """Réinitialise toutes les corrections d'image"""

@@ -13,7 +13,7 @@ class HistogramWidget(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(200)
+        self.setMinimumHeight(150) # Réduit de 200 à 150
         self.data_r = self.generate_sample_data()
         self.data_g = self.generate_sample_data()
         self.data_b = self.generate_sample_data()
@@ -133,14 +133,14 @@ class Histogram(QWidget):
         # En-tête (TRÈS RÉDUIT)
         header = QLabel("Histogramme")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setFixedHeight(40)  # Hauteur fixe
+        header.setFixedHeight(24)  # Hauteur fixe réduite
         header.setStyleSheet("""
             QLabel {
                 background-color: #111827;
                 color: #e5e7eb;
-                font-size: 14px;
+                font-size: 11px;
                 font-weight: 700;
-                padding: 8px;
+                padding: 0px;
                 border-bottom: 1px solid #1f2937;
             }
         """)
@@ -152,13 +152,13 @@ class Histogram(QWidget):
         # Container pour l'histogramme
         container = QWidget()
         container_layout = QVBoxLayout()
-        container_layout.setContentsMargins(10, 10, 10, 10)
+        container_layout.setContentsMargins(2, 2, 2, 2) # Marges réduites
         container_layout.addWidget(self.histogram_widget)
         container.setLayout(container_layout)
         container.setStyleSheet("background-color: transparent;")
 
         
-        main_layout.addWidget(container)
+        main_layout.addWidget(container, 1) # Stretch 1 pour occuper l'espace
         
         self.setLayout(main_layout)
         self.setObjectName("Histogram")

@@ -12,7 +12,7 @@ import numpy as np
 import subprocess
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QInputDialog
+from PyQt6.QtWidgets import QInputDialog, QApplication
 
 # Ajout du chemin racine pour les imports
 project_root = Path(__file__).parent.parent
@@ -640,6 +640,116 @@ class ExtractionKosmosController(QObject):
             # Réinitialiser le nom pour la prochaine capture
             self.pending_capture_name = None
             
+    def _export_video_with_filters(self, source_path, output_path, start_ms, end_ms):
+        """
+        Exporte une portion de vidéo en appliquant les filtres actifs via OpenCV
+        et en encodant via FFmpeg (pipe).
+        """
+        import cv2
+        
+        cap = cv2.VideoCapture(str(source_path))
+        if not cap.isOpened():
+            raise Exception("Impossible d'ouvrir la vidéo source")
+            
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        cap.set(cv2.CAP_PROP_POS_MSEC, start_ms)
+        
+        duration_ms = end_ms - start_ms
+        duration_s = duration_ms / 1000.0
+        frames_to_process = int(duration_s * fps)
+        
+        start_str = str(datetime.timedelta(milliseconds=start_ms))
+
+        # Commande FFmpeg :
+        # Input 0: Raw video from stdin (OpenCV)
+        # Input 1: Audio from source file (cut with -ss and -t)
+        cmd = [
+            'ffmpeg', '-y',
+            '-loglevel', 'error', # Réduire la verbosité pour éviter le blocage du pipe stderr
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{width}x{height}',
+            '-pix_fmt', 'bgr24',
+            '-r', str(fps),
+            '-i', '-', 
+            '-ss', start_str,
+            '-i', str(source_path),
+            '-t', str(duration_s),
+            '-map', '0:v',
+            '-map', '1:a?', # Audio optionnel
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            str(output_path)
+        ]
+        
+        print(f"🚀 Commande FFmpeg: {' '.join(cmd)}")
+        
+        creation_flags = 0
+        if sys.platform == "win32":
+            creation_flags = subprocess.CREATE_NO_WINDOW
+            
+        process = subprocess.Popen(
+            cmd, 
+            stdin=subprocess.PIPE, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            creationflags=creation_flags
+        )
+        
+        filters = []
+        if self.view and hasattr(self.view, 'video_player'):
+            filters = self.view.video_player.active_filters
+            
+        print(f"🎬 Export avec filtres ({len(filters)} actifs)...")
+        
+        try:
+            count = 0
+            while count < frames_to_process:
+                # Garder l'interface réactive
+                QApplication.processEvents()
+                
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                    
+                # Appliquer les filtres
+                if filters:
+                    for name, (filter_func, kwargs) in filters.items():
+                        try:
+                            frame = filter_func(frame, **kwargs)
+                        except Exception as e:
+                            print(f"⚠️ Erreur filtre {name}: {e}")
+                
+                # Écrire dans le pipe
+                try:
+                    process.stdin.write(frame.tobytes())
+                except IOError as e:
+                    print(f"❌ Erreur écriture pipe: {e}")
+                    break
+                    
+                count += 1
+                
+        finally:
+            cap.release()
+            if process.stdin:
+                process.stdin.close()
+            
+            # Attendre la fin du processus et récupérer stderr
+            stdout_data, stderr_data = process.communicate()
+            
+            if process.returncode != 0:
+                stderr_output = stderr_data.decode('utf-8', errors='replace') if stderr_data else "Erreur inconnue"
+                print(f"❌ Erreur FFmpeg (code {process.returncode}): {stderr_output}")
+                raise Exception(f"Erreur lors de l'encodage FFmpeg: {stderr_output[-200:]}")
+            else:
+                print("✅ Export FFmpeg terminé avec succès.")
+
     def on_recording(self):
         """Démarre/Arrête l'enregistrement d'un extrait"""
         if not self.view or not self.model.video_selectionnee:
@@ -690,15 +800,18 @@ class ExtractionKosmosController(QObject):
             final_output_path = recordings_dir / f"{rec_name}.mp4"
 
             self.view.show_message("Enregistrement de l'extrait final...", "info")
-            cmd_final = [
-                'ffmpeg', '-ss', final_start_str, '-i', self.model.video_selectionnee.chemin,
-                '-t', str(final_duration_s), '-c', 'copy', '-y', str(final_output_path)
-            ]
-            subprocess.run(cmd_final, check=True, capture_output=True, text=True)
+            
+            # Utiliser la nouvelle méthode d'export avec filtres
+            self._export_video_with_filters(
+                self.model.video_selectionnee.chemin,
+                final_output_path,
+                final_start_ms,
+                final_end_ms
+            )
+            
             self.view.show_message(f"Enregistrement '{rec_name}.mp4' sauvegardé !", "success")
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            error_msg = e.stderr if isinstance(e, subprocess.CalledProcessError) else "ffmpeg non trouvé."
-            self.view.show_message(f"Erreur enregistrement final: {error_msg}", "error")
+        except Exception as e:
+            self.view.show_message(f"Erreur enregistrement final: {e}", "error")
                     
     def on_create_short(self):
         """Crée un short (extrait court format vertical ou spécifique)"""
@@ -751,28 +864,44 @@ class ExtractionKosmosController(QObject):
         extraction_dir = Path(self.model.campagne_courante.workspace_extraction)
         shorts_dir = extraction_dir / "shorts"
         shorts_dir.mkdir(parents=True, exist_ok=True)
+        
+        temp_filtered_path = shorts_dir / f"~temp_filtered.mp4"
         temp_preview_path = shorts_dir / f"~preview_temp.mp4"
 
-        # 4. Créer un aperçu accéléré avec ffmpeg
+        # 4. Créer un aperçu accéléré avec filtres
         try:
-            self.view.show_message("Création de l'aperçu...", "info")
-            # Commande ffmpeg pour créer un aperçu x2, basse qualité
+            self.view.show_message("Génération de l'aperçu avec filtres...", "info")
+            
+            # Étape 1: Générer le clip filtré à vitesse normale
+            end_ms = start_ms + int(clip_duration_s * 1000)
+            self._export_video_with_filters(
+                self.model.video_selectionnee.chemin,
+                temp_filtered_path,
+                start_ms,
+                end_ms
+            )
+            
+            # Étape 2: Accélérer ce clip pour l'aperçu (x2)
             cmd_preview = [
-                'ffmpeg',
-                '-ss', start_time_str,
-                '-i', self.model.video_selectionnee.chemin,
-                '-t', str(clip_duration_s),
-                # Filtre pour accélération x2 uniquement, sans recadrage vertical
+                'ffmpeg', '-y',
+                '-i', str(temp_filtered_path),
                 '-vf', 'setpts=0.5*PTS',
-                '-af', 'atempo=2.0',      # Accélère l'audio x2
-                '-preset', 'ultrafast',  # Encodage très rapide
-                '-crf', '28',            # Qualité plus basse pour la vitesse,
-                '-y', str(temp_preview_path)
+                '-af', 'atempo=2.0',
+                '-preset', 'ultrafast',
+                '-crf', '28',
+                str(temp_preview_path)
             ]
-            subprocess.run(cmd_preview, check=True, capture_output=True, text=True)
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            error_msg = e.stderr if isinstance(e, subprocess.CalledProcessError) else "ffmpeg non trouvé."
-            self.view.show_message(f"Erreur création aperçu: {error_msg}", "error")
+            
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+                
+            subprocess.run(cmd_preview, check=True, capture_output=True, text=True, creationflags=creation_flags)
+            
+        except Exception as e:
+            self.view.show_message(f"Erreur création aperçu: {e}", "error")
+            # Nettoyage en cas d'erreur
+            if temp_filtered_path.exists(): temp_filtered_path.unlink()
             return
 
         # 5. Afficher la boîte de dialogue d'aperçu
@@ -786,45 +915,46 @@ class ExtractionKosmosController(QObject):
             if accepted:
                 short_name = preview_dialog.get_short_name()
 
-                # Le temps de début a déjà été calculé pour l'aperçu, nous le réutilisons.
-                # La durée est 'clip_duration_s' définie au début.
-                start_ms_final = start_ms
-                start_time_str_final = str(datetime.timedelta(milliseconds=start_ms_final))
-
                 try:
                     if not short_name:
                         self.view.show_message("Enregistrement annulé : nom vide.", "warning")
-                        return # Ce return est maintenant à l'intérieur du try...except, donc le finally sera appelé.
+                        return
 
                     self.view.show_message("Enregistrement du short final...", "info")
                     final_output_path = shorts_dir / f"{short_name}.mp4"
-                    # Commande ffmpeg pour créer le clip final en qualité originale
-                    cmd_final = [
-                        'ffmpeg',
-                        '-ss', start_time_str_final,
-                        '-i', self.model.video_selectionnee.chemin,
-                        '-t', str(clip_duration_s),
-                        # On ne recadre plus, donc on peut copier le flux pour garder la qualité et la vitesse
-                        '-c', 'copy',
-                        '-y', str(final_output_path)
-                    ]
-                    subprocess.run(cmd_final, check=True, capture_output=True, text=True)
-                    self.view.show_message(f"Short '{short_name}.mp4' enregistré !", "success")
-                except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                    error_msg = e.stderr if isinstance(e, subprocess.CalledProcessError) else "ffmpeg non trouvé."
-                    self.view.show_message(f"Erreur enregistrement final: {error_msg}", "error")
+                    
+                    # Le fichier filtré existe déjà (temp_filtered_path), on peut juste le renommer/copier !
+                    # Mais attention, l'utilisateur veut peut-être le short accéléré ?
+                    # Non, généralement un short est un extrait court, pas forcément accéléré.
+                    # L'aperçu était accéléré pour "voir vite".
+                    # Si le but est d'avoir un short accéléré, il faut garder l'accélération.
+                    # D'après le code précédent, le final était en vitesse normale ('-c copy' depuis source).
+                    # Donc on garde la vitesse normale.
+                    
+                    if temp_filtered_path.exists():
+                        import shutil
+                        shutil.move(str(temp_filtered_path), str(final_output_path))
+                        self.view.show_message(f"Short '{short_name}.mp4' enregistré !", "success")
+                    else:
+                        raise Exception("Le fichier temporaire a disparu.")
+                        
+                except Exception as e:
+                    self.view.show_message(f"Erreur enregistrement final: {e}", "error")
 
             else:
                 self.view.show_message("Enregistrement annulé.", "info")
 
         finally:
-            # 7. Nettoyer le fichier d'aperçu temporaire dans tous les cas
+            # 7. Nettoyer les fichiers temporaires
             if temp_preview_path.exists():
                 try:
                     temp_preview_path.unlink()
-                    print("🗑️ Fichier d'aperçu temporaire supprimé.")
-                except OSError as e:
-                    print(f"❌ Erreur suppression fichier temporaire: {e}")
+                except OSError: pass
+            # Si le fichier filtré n'a pas été déplacé (ex: annulé), on le supprime
+            if temp_filtered_path.exists():
+                try:
+                    temp_filtered_path.unlink()
+                except OSError: pass
 
     def on_crop(self):
         """Active l'outil de recadrage"""

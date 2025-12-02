@@ -923,6 +923,14 @@ class VideoPlayer(QWidget):
             return
         frame = self.current_cv_frame.copy()
         
+        # Appliquer les filtres actifs sur la capture pour qu'elle corresponde à ce qui est affiché
+        if self.active_filters:
+            for name, (filter_func, kwargs) in self.active_filters.items():
+                try:
+                    frame = filter_func(frame, **kwargs)
+                except Exception as e:
+                    print(f"❌ Erreur en appliquant le filtre '{name}' lors de la capture: {e}")
+        
         if crop_rect:
             # Calculer les proportions entre le widget et la frame originale
             widget_size = self.video_widget.size()

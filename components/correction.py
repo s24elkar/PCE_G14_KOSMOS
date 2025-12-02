@@ -2,7 +2,6 @@
 Composant Correction des Images
 Contrôles pour correction couleurs, contraste, luminosité et filtres avancés
 """
-import numpy as np
 from typing import Optional # AJOUT
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
                              QPushButton, QGroupBox, QGridLayout)
@@ -115,59 +114,6 @@ class LabeledSlider(QWidget):
         self.slider.setValue(self.default_value)
 
 
-class CurveEditor(QWidget):
-    """
-    Éditeur de courbe simple : 3 points (ombres/médiums/hautes lumières) pour générer une LUT.
-    """
-    curve_changed = pyqtSignal(list)
-
-    def __init__(self, parent: Optional[QWidget] = None) -> None: # MODIFICATION
-        super().__init__(parent)
-        self._lut = list(range(256))
-        self._init_ui()
-
-    def _init_ui(self) -> None:
-        main_layout = QVBoxLayout(self) # Appliquer le layout directement au widget
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(4)
-
-        title = QLabel("Courbe tonale")
-        title.setStyleSheet("color: white; font-weight: bold; font-size: 14px;")
-        main_layout.addWidget(title)
-
-        sliders = QGridLayout()
-        sliders.setContentsMargins(0, 5, 0, 0)
-        sliders.setHorizontalSpacing(10)
-
-        self.shadow_slider = LabeledSlider("Ombres", -80, 80, 0)
-        self.mid_slider = LabeledSlider("Tons moyens", -80, 80, 0)
-        self.highlight_slider = LabeledSlider("Hautes lumières", -80, 80, 0)
-
-        self.shadow_slider.value_changed.connect(self._emit_curve)
-        self.mid_slider.value_changed.connect(self._emit_curve)
-        self.highlight_slider.value_changed.connect(self._emit_curve)
-
-        sliders.addWidget(self.shadow_slider, 0, 0)
-        sliders.addWidget(self.mid_slider, 0, 1)
-        sliders.addWidget(self.highlight_slider, 1, 0, 1, 2)
-
-        main_layout.addLayout(sliders)
-
-    def reset(self) -> None:
-        for slider in (self.shadow_slider, self.mid_slider, self.highlight_slider):
-            slider.reset()
-
-    def _emit_curve(self) -> None:
-        shadows = np.clip(0 + self.shadow_slider.get_value(), 0, 255)
-        mids = np.clip(128 + self.mid_slider.get_value(), 0, 255)
-        highs = np.clip(255 + self.highlight_slider.get_value(), 0, 255)
-        x = np.array([0, 128, 255], dtype=np.float32)
-        y = np.array([shadows, mids, highs], dtype=np.float32)
-        lut = np.interp(np.arange(256, dtype=np.float32), x, y)
-        lut = np.clip(lut, 0, 255).astype(np.uint8)
-        self.curve_changed.emit(lut.tolist())
-
-
 class ImageCorrection(QWidget):
     """
     Composant Correction des Images
@@ -187,7 +133,6 @@ class ImageCorrection(QWidget):
     saturation_changed = pyqtSignal(int)
     hue_changed = pyqtSignal(int)
     temperature_changed = pyqtSignal(int)
-    curve_changed = pyqtSignal(list)
 
     
     def __init__(self, parent=None):
@@ -272,17 +217,6 @@ class ImageCorrection(QWidget):
         color_sliders_layout.addWidget(self.temperature_slider, 1, 0, 1, 2)
 
         color_filters_layout.addLayout(color_sliders_layout)
-
-        # Séparateur
-        separator = QWidget()
-        separator.setFixedHeight(1)
-        separator.setStyleSheet("background-color: #444; margin-top: 5px; margin-bottom: 5px;")
-        color_filters_layout.addWidget(separator)
-
-        # Éditeur de courbe
-        self.curve_editor = CurveEditor()
-        self.curve_editor.curve_changed.connect(self.curve_changed.emit)
-        color_filters_layout.addWidget(self.curve_editor)
 
         controls_layout.addWidget(color_filters_group)
 
@@ -375,7 +309,6 @@ class ImageCorrection(QWidget):
         self.saturation_slider.reset()
         self.hue_slider.reset()
         self.temperature_slider.reset()
-        self.curve_editor.reset()
         
     def get_contrast(self):
         """Retourne la valeur du contraste"""
