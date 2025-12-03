@@ -59,22 +59,77 @@ class HistogramWidget(QWidget):
         # Fond dégradé sombre
         painter.fillRect(self.rect(), QColor(12, 18, 32))
         
-        # Dimensions
-        width = self.width()
-        height = self.height() - 30  # Réserver de l'espace pour les labels
+        # Marges pour les axes
+        margin_left = 35
+        margin_bottom = 25
+        margin_top = 10
+        margin_right = 10
         
-        # Dessiner la grille
-        painter.setPen(QPen(QColor(90, 90, 90), 1))
-        painter.setPen(QPen(QColor(32, 46, 70), 1))
-        for i in range(0, width, 50): painter.drawLine(i, 0, i, height)
-        for i in range(0, height, 40): painter.drawLine(0, i, width, i)
+        # Zone de dessin du graphique
+        graph_rect = QRect(
+            margin_left, 
+            margin_top, 
+            self.width() - margin_left - margin_right, 
+            self.height() - margin_top - margin_bottom
+        )
+        
+        # Dessiner les axes
+        painter.setPen(QPen(QColor(150, 150, 150), 1))
+        # Axe Y
+        painter.drawLine(graph_rect.topLeft(), graph_rect.bottomLeft())
+        # Axe X
+        painter.drawLine(graph_rect.bottomLeft(), graph_rect.bottomRight())
+        
+        # Labels Axe X (0, 64, 128, 192, 255)
+        font = painter.font()
+        font.setPointSize(7)
+        painter.setFont(font)
+        
+        x_labels = [0, 64, 128, 192, 255]
+        for val in x_labels:
+            x_pos = graph_rect.left() + (val / 255) * graph_rect.width()
+            painter.drawText(
+                int(x_pos - 10), 
+                graph_rect.bottom() + 15, 
+                20, 
+                10, 
+                Qt.AlignmentFlag.AlignCenter, 
+                str(val)
+            )
+            # Petit tick
+            painter.drawLine(int(x_pos), graph_rect.bottom(), int(x_pos), graph_rect.bottom() + 3)
+
+        # Labels Axe Y (0, 50%, 100%) - Approximatif car dépend des données
+        y_labels = ["0", "50%", "100%"]
+        for i, label in enumerate(y_labels):
+            y_pos = graph_rect.bottom() - (i / 2) * graph_rect.height()
+            painter.drawText(
+                0, 
+                int(y_pos - 5), 
+                margin_left - 5, 
+                10, 
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, 
+                label
+            )
+            # Petit tick
+            painter.drawLine(graph_rect.left() - 3, int(y_pos), graph_rect.left(), int(y_pos))
+
+        # Grille légère
+        painter.setPen(QPen(QColor(50, 50, 50), 1, Qt.PenStyle.DotLine))
+        # Lignes verticales
+        for val in x_labels[1:-1]:
+            x_pos = int(graph_rect.left() + (val / 255) * graph_rect.width())
+            painter.drawLine(x_pos, graph_rect.top(), x_pos, graph_rect.bottom())
+        # Ligne horizontale (50%)
+        y_mid = int(graph_rect.bottom() - 0.5 * graph_rect.height())
+        painter.drawLine(graph_rect.left(), y_mid, graph_rect.right(), y_mid)
 
         # Fonction pour dessiner des barres semi-transparentes
         def draw_bars(data, color, alpha_fill=80, alpha_line=180):
             if not data:
                 return
             
-            step = max(1, int(width / max(1, len(data))))
+            step = max(1, graph_rect.width() / max(1, len(data)))
             max_value = max(data) if data else 1
 
             fill_color = QColor(color)
@@ -85,9 +140,16 @@ class HistogramWidget(QWidget):
             painter.setBrush(fill_color)
 
             for i, value in enumerate(data):
-                x = int(i * step)
-                bar_height = int((value / max_value) * height)
-                bar_rect = QRect(x, height - bar_height, int(step * 0.9), bar_height)
+                # Ajustement pour rester dans graph_rect
+                if i >= len(data): break
+                
+                x = int(graph_rect.left() + i * (graph_rect.width() / len(data)))
+                bar_height = int((value / max_value) * graph_rect.height())
+                
+                # Largeur de barre ajustée pour ne pas dépasser
+                bar_width = max(1, int(graph_rect.width() / len(data)) + 1)
+                
+                bar_rect = QRect(x, graph_rect.bottom() - bar_height, bar_width, bar_height)
                 painter.drawRect(bar_rect)
 
         # Dessiner les barres (densité en fond, puis RVB)
@@ -96,23 +158,16 @@ class HistogramWidget(QWidget):
         draw_bars(self.data_g, "#22C55E", alpha_fill=70, alpha_line=180)      # Vert
         draw_bars(self.data_b, "#3B82F6", alpha_fill=70, alpha_line=180)      # Bleu
         
-        # Triangle rouge en haut à droite
-        triangle_size = 15
+        # Triangle rouge en haut à droite (indicateur clipping)
+        triangle_size = 10
         triangle_points = [
-            QPoint(width - 5, 5),
-            QPoint(width - 5, 5 + triangle_size),
-            QPoint(width - 5 - triangle_size, 5)
+            QPoint(graph_rect.right() - 2, graph_rect.top() + 2),
+            QPoint(graph_rect.right() - 2, graph_rect.top() + 2 + triangle_size),
+            QPoint(graph_rect.right() - 2 - triangle_size, graph_rect.top() + 2)
         ]
         painter.setBrush(QColor(255, 0, 0))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPolygon(QPolygon(triangle_points))
-        
-        # Labels en bas
-        painter.setPen(QColor(200, 200, 200))
-        painter.drawText(10, height + 20, "ISO 250")
-        painter.drawText(width // 2 - 20, height + 20, "14 mm")
-        painter.drawText(width - 60, height + 20, "f/11")
-        painter.drawText(width - 160, height + 20, "1/160 s")
 
 
 class Histogram(QWidget):
