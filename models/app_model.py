@@ -6,6 +6,7 @@ Architecture MVC - Couche Modèle
 import os
 import json
 import csv
+import cv2
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -58,12 +59,31 @@ class Video:
     @staticmethod
     def from_dict(data: Dict) -> 'Video':
         """Crée une vidéo depuis un dictionnaire"""
+        duree = data.get('duree', '')
+        chemin = data.get('chemin', '')
+        
+        # Si la durée est manquante ou invalide, on tente de la recalculer
+        if (not duree or duree == "--:--") and chemin and os.path.exists(chemin):
+            try:
+                cap = cv2.VideoCapture(chemin)
+                if cap.isOpened():
+                    fps = cap.get(cv2.CAP_PROP_FPS)
+                    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    if fps > 0:
+                        duration_sec = frame_count / fps
+                        m, s = divmod(duration_sec, 60)
+                        h, m = divmod(m, 60)
+                        duree = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
+                cap.release()
+            except Exception:
+                pass
+
         video = Video(
             nom=data.get('nom', ''),
-            chemin=data.get('chemin', ''),
+            chemin=chemin,
             dossier_numero=data.get('dossier_numero', ''),
             taille=data.get('taille', ''),
-            duree=data.get('duree', ''),
+            duree=duree,
             date=data.get('date', '')
         )
         video.metadata_communes = data.get('metadata_communes', {})
@@ -363,12 +383,28 @@ class ApplicationModel:
             os.path.getmtime(chemin)
         ).strftime("%d/%m/%Y")
         
+        # Calcul de la durée via OpenCV
+        duree = "--:--"
+        try:
+            cap = cv2.VideoCapture(chemin)
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if fps > 0:
+                    duration_sec = frame_count / fps
+                    m, s = divmod(duration_sec, 60)
+                    h, m = divmod(m, 60)
+                    duree = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
+            cap.release()
+        except Exception as e:
+            print(f"⚠️ Impossible de calculer la durée pour {nom}: {e}")
+
         video = Video(
             nom=nom,
             chemin=chemin,
             dossier_numero=dossier_numero,
             taille=taille,
-            duree="--:--",
+            duree=duree,
             date=date_modif
         )
         
@@ -408,9 +444,10 @@ class ApplicationModel:
                 video.metadata_communes['model'] = normalized_row.get('model', '')
                 video.metadata_communes['version'] = normalized_row.get('version', '')
                 
-                # Remplir la durée si elle existe
-                if 'duree' in normalized_row or 'duration' in normalized_row:
-                    video.duree = normalized_row.get('duree', normalized_row.get('duration', '--:--'))
+                # Remplir la durée si elle existe et est valide dans le CSV
+                csv_duree = normalized_row.get('duree', normalized_row.get('duration', ''))
+                if csv_duree and csv_duree != "--:--" and csv_duree.strip() != "":
+                    video.duree = csv_duree
                 
                 # --- MODIFICATION: Ne plus lire les données CTD/GPS/Date du CSV ---
                 # Ces données proviendront exclusivement du JSON lors de l'étape

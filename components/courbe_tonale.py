@@ -19,20 +19,35 @@ class InteractiveCurveWidget(QWidget):
         super().__init__(parent)
         self.setMinimumHeight(150)
         self.setMouseTracking(True)
+        
+        # Marges pour les axes
+        self.margin_left = 35
+        self.margin_bottom = 25
+        self.margin_top = 10
+        self.margin_right = 10
+        
         self.reset()
+
+    def _get_graph_rect(self):
+        return QRectF(
+            self.margin_left,
+            self.margin_top,
+            self.width() - self.margin_left - self.margin_right,
+            self.height() - self.margin_top - self.margin_bottom
+        )
 
     def _map_point_to_widget(self, p: list) -> QPointF:
         """Convertit un point (0-255) en coordonnées du widget."""
-        w, h = self.width(), self.height()
-        x = (p[0] / 255.0) * w
-        y = h - (p[1] / 255.0) * h
+        rect = self._get_graph_rect()
+        x = rect.left() + (p[0] / 255.0) * rect.width()
+        y = rect.bottom() - (p[1] / 255.0) * rect.height()
         return QPointF(x, y)
 
     def _map_pos_to_point(self, pos: QPointF) -> list:
         """Convertit une position du widget en point (0-255)."""
-        w, h = self.width(), self.height()
-        x = np.clip((pos.x() / w) * 255, 0, 255)
-        y = np.clip(((h - pos.y()) / h) * 255, 0, 255)
+        rect = self._get_graph_rect()
+        x = np.clip(((pos.x() - rect.left()) / rect.width()) * 255, 0, 255)
+        y = np.clip(((rect.bottom() - pos.y()) / rect.height()) * 255, 0, 255)
         return [int(x), int(y)]
 
     def reset(self) -> None:
@@ -56,18 +71,60 @@ class InteractiveCurveWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor("#182025"))
 
+        rect = self._get_graph_rect()
+
+        # Dessiner les axes
+        painter.setPen(QPen(QColor(150, 150, 150), 1))
+        # Axe Y
+        painter.drawLine(int(rect.left()), int(rect.top()), int(rect.left()), int(rect.bottom()))
+        # Axe X
+        painter.drawLine(int(rect.left()), int(rect.bottom()), int(rect.right()), int(rect.bottom()))
+
+        # Labels et Ticks
+        font = painter.font()
+        font.setPointSize(7)
+        painter.setFont(font)
+
+        # Axe X (Entrée)
+        x_labels = [0, 64, 128, 192, 255]
+        for val in x_labels:
+            x_pos = rect.left() + (val / 255) * rect.width()
+            painter.drawText(
+                int(x_pos - 10), 
+                int(rect.bottom() + 15), 
+                20, 
+                10, 
+                Qt.AlignmentFlag.AlignCenter, 
+                str(val)
+            )
+            painter.drawLine(int(x_pos), int(rect.bottom()), int(x_pos), int(rect.bottom() + 3))
+
+        # Axe Y (Sortie)
+        y_labels = [0, 64, 128, 192, 255]
+        for val in y_labels:
+            y_pos = rect.bottom() - (val / 255) * rect.height()
+            painter.drawText(
+                0, 
+                int(y_pos - 5), 
+                int(self.margin_left - 5), 
+                10, 
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, 
+                str(val)
+            )
+            painter.drawLine(int(rect.left() - 3), int(y_pos), int(rect.left()), int(y_pos))
+
         # Grille
         grid_pen = QPen(QColor("#303940"), 0.5)
         painter.setPen(grid_pen)
         for i in range(1, 4):
-            x = self.width() * i / 4
-            y = self.height() * i / 4
-            painter.drawLine(int(x), 0, int(x), self.height())
-            painter.drawLine(0, int(y), self.width(), int(y))
+            x = rect.left() + rect.width() * i / 4
+            y = rect.top() + rect.height() * i / 4
+            painter.drawLine(int(x), int(rect.top()), int(x), int(rect.bottom()))
+            painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
 
         # Ligne diagonale de référence
         painter.setPen(QPen(QColor("#404950"), 1, Qt.PenStyle.DashLine))
-        painter.drawLine(0, self.height(), self.width(), 0)
+        painter.drawLine(int(rect.left()), int(rect.bottom()), int(rect.right()), int(rect.top()))
 
         # Courbe
         curve_pen = QPen(QColor("#2196F3"), 2)

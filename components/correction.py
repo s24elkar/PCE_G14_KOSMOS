@@ -58,6 +58,9 @@ class LabeledSlider(QWidget):
         layout.setContentsMargins(0, 2, 0, 5)
         layout.setSpacing(4)
         
+        # Header Layout (Label + Value)
+        header_layout = QHBoxLayout()
+        
         # Label
         label = QLabel(self.label_text)
         label.setStyleSheet("""
@@ -68,7 +71,23 @@ class LabeledSlider(QWidget):
                 font-family: 'Montserrat';
             }
         """)
-        layout.addWidget(label)
+        header_layout.addWidget(label)
+        
+        header_layout.addStretch()
+        
+        # Value Label
+        self.value_label = QLabel(str(self.default_value))
+        self.value_label.setStyleSheet("""
+            QLabel {
+                color: #2196F3;
+                font-size: 12px;
+                font-weight: bold;
+                font-family: 'Montserrat';
+            }
+        """)
+        header_layout.addWidget(self.value_label)
+        
+        layout.addLayout(header_layout)
         
         # Slider
         self.slider = QSlider(Qt.Orientation.Horizontal)
@@ -96,10 +115,15 @@ class LabeledSlider(QWidget):
                 border: none;
             }
         """)
+        self.slider.valueChanged.connect(self.update_label)
         self.slider.valueChanged.connect(self.value_changed.emit)
         layout.addWidget(self.slider)
         
         self.setLayout(layout)
+        
+    def update_label(self, value):
+        """Met à jour le label de valeur"""
+        self.value_label.setText(str(value))
         
     def get_value(self):
         """Retourne la valeur actuelle du slider"""
@@ -108,10 +132,12 @@ class LabeledSlider(QWidget):
     def set_value(self, value):
         """Définit la valeur du slider"""
         self.slider.setValue(value)
+        self.update_label(value)
         
     def reset(self):
         """Remet le slider à sa valeur par défaut"""
         self.slider.setValue(self.default_value)
+        self.update_label(self.default_value)
 
 
 class ImageCorrection(QWidget):
