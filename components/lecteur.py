@@ -31,8 +31,9 @@ class VideoThread(QThread):
         self.total_frames = 0
         self.fps = 25
         self.seek_frame = -1
-        self.loop = False # AJOUT: Attribut pour la lecture en boucle
+        self.loop = False #Attribut pour la lecture en boucle
         self.speed = 1.0
+        self._last_frame_time = 0
         
     def stop(self):
         """Arrête proprement le thread."""
@@ -47,6 +48,7 @@ class VideoThread(QThread):
         
     def play(self):
         self.is_paused = False
+        self._last_frame_time = time.time()
         
     def pause(self):
         self.is_paused = True
@@ -62,7 +64,9 @@ class VideoThread(QThread):
         self.loop = loop
         
     def set_speed(self, speed):
+        """Définit la vitesse de lecture."""
         self.speed = speed
+        self._last_frame_time = time.time()
         
     def run(self):
         """Boucle principale du thread vidéo."""
@@ -84,12 +88,13 @@ class VideoThread(QThread):
                         self.current_frame = 0
                         self.frame_ready.emit(frame)
                         self.position_changed.emit(0)
-                    print(f"📹 Vidéo OpenCV chargée: {self.total_frames} frames à {self.fps} fps")
+                    print(f"Vidéo OpenCV chargée: {self.total_frames} frames à {self.fps} fps")
                 else:
-                    print(f"❌ Erreur: Impossible d'ouvrir la vidéo {self.video_path_to_load}")
+                    print(f"Erreur: Impossible d'ouvrir la vidéo {self.video_path_to_load}")
                     self.cap = None # S'assurer que cap est None en cas d'échec
                 
                 self.video_path_to_load = None # Réinitialiser la demande
+                self._last_frame_time = time.time()
 
             if not self.cap or not self.cap.isOpened():
                 self.msleep(100)
@@ -105,8 +110,22 @@ class VideoThread(QThread):
                     self.frame_ready.emit(frame)
                     position_ms = int((self.current_frame / self.fps) * 1000)
                     self.position_changed.emit(position_ms)
+                self._last_frame_time = time.time()
 
             if not self.is_paused:
+                current_time = time.time()
+                elapsed_time = current_time - self._last_frame_time
+                frames_to_advance = int(elapsed_time * self.fps * self.speed)
+
+                if frames_to_advance >= 1:
+                    if self.speed > 2.0 : 
+                        frames_to_skip = frames_to_advance - 1
+                        for _ in range(frames_to_skip):
+                            ret = self.cap.grab()[0]
+                            if not ret:
+                                break
+                            self.current_frame += 1
+
                 ret, frame = self.cap.read()
                 if ret:
                     self.frame_ready.emit(frame)
@@ -467,7 +486,8 @@ class VideoControls(QWidget):
     forward_clicked = pyqtSignal()
     speed_changed = pyqtSignal(float)
     detach_clicked = pyqtSignal()    
-    toggle_metadata_clicked = pyqtSignal(bool) # AJOUT
+    toggle_metadata_clicked = pyqtSignal(bool) 
+    fullscreen_clicked = pyqtSignal()  
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -591,6 +611,15 @@ class VideoControls(QWidget):
         self.btn_toggle_metadata.setChecked(True)
         self.btn_toggle_metadata.toggled.connect(self.toggle_metadata_clicked)
         layout.addWidget(self.btn_toggle_metadata)
+
+        # AJOUT : Bouton Plein Écran
+        self.btn_fullscreen = QPushButton("⛶")
+        self.btn_fullscreen.setFixedSize(45, 45)
+        self.btn_fullscreen.setStyleSheet(button_style)
+        self.btn_fullscreen.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_fullscreen.setToolTip("Plein écran (F ou Échap pour quitter)")
+        self.btn_fullscreen.clicked.connect(self.fullscreen_clicked.emit)
+        layout.addWidget(self.btn_fullscreen)
         
         layout.addStretch()
         
@@ -648,6 +677,7 @@ class VideoPlayer(QWidget):
     histogram_data_ready = pyqtSignal(list, list, list, list) # AJOUT: R, G, B, Densité
     
     filters_reset = pyqtSignal() # Signal pour notifier que les filtres ont été réinitialisés
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -673,6 +703,11 @@ class VideoPlayer(QWidget):
         # --- GESTION DES FILTRES D'IMAGE ---
         self.active_filters = OrderedDict()
         self.video_thread.frame_ready.connect(self.on_frame_ready)
+
+        #fullscreen 
+        self.is_fullscreen = False
+        self.normal_parent = None 
+        self.normal_geometry = None
         
         self.init_ui()
 
@@ -769,6 +804,7 @@ class VideoPlayer(QWidget):
         
         timeline_container.setLayout(timeline_layout)
         timeline_container.setStyleSheet("background-color: black;")
+        self.timeline_container = timeline_container
         main_layout.addWidget(timeline_container, stretch=0)
         
         # Contrôles
@@ -783,10 +819,14 @@ class VideoPlayer(QWidget):
         self.controls.forward_clicked.connect(self.seek_forward)
         self.controls.speed_changed.connect(self.on_speed_changed)
         self.controls.detach_clicked.connect(self.on_detach_player)
-        self.controls.toggle_metadata_clicked.connect(self.toggle_metadata_overlay) # AJOUT
+        self.controls.toggle_metadata_clicked.connect(self.toggle_metadata_overlay) 
+
+        if hasattr(self.controls, 'fullscreen_clicked'):
+            self.controls.fullscreen_clicked.connect(self.toggle_fullscreen)
         
         controls_layout.addWidget(self.controls)
         controls_container.setLayout(controls_layout)
+        self.controls_container = controls_container
         main_layout.addWidget(controls_container, stretch=0)
         
         self.setLayout(main_layout)
@@ -797,6 +837,43 @@ class VideoPlayer(QWidget):
                 border: 3px solid black;
             }
         """)
+
+    def toggle_fullscreen(self):
+        if not self.is_fullscreen:
+            self.normal_parent = self.parent()
+            self.normal_geometry = self.geometry()
+            self.setParent(None)
+            self.showFullScreen()
+            self.is_fullscreen = True
+            print("Passage en mode plein écran")
+        else:
+            self.showNormal()
+            if self.normal_parent:
+                self.setParent(self.normal_parent)
+                self.setGeometry(self.normal_geometry)
+                self.show()
+            self.is_fullscreen = False
+            print("Retour au mode fenêtre normale")
+    
+    def keyPressEvent(self, event):
+        """Gestion des touches clavier."""
+        # Échapper du mode capture
+        if self.video_widget.is_cropping and event.key() == Qt.Key.Key_Escape:
+            self.video_widget.is_cropping = False
+            self.on_cropping_finished_by_child()
+            print("🖱️ Sélection de zone annulée.")
+            self.video_widget.update()
+        # Échapper du plein écran
+        elif self.is_fullscreen and event.key() == Qt.Key.Key_Escape:
+            self.toggle_fullscreen()
+        # Espace pour play/pause
+        elif event.key() == Qt.Key.Key_Space:
+            self.toggle_play_pause()
+        # F pour plein écran
+        elif event.key() == Qt.Key.Key_F:
+            self.toggle_fullscreen()
+        else:
+            super().keyPressEvent(event)
 
     def update_timeseries_metadata(self, position_ms):
         """Met à jour l'overlay avec les données du CSV en fonction du temps."""

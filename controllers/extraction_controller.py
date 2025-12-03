@@ -923,13 +923,6 @@ class ExtractionKosmosController(QObject):
                     self.view.show_message("Enregistrement du short final...", "info")
                     final_output_path = shorts_dir / f"{short_name}.mp4"
                     
-                    # Le fichier filtré existe déjà (temp_filtered_path), on peut juste le renommer/copier !
-                    # Mais attention, l'utilisateur veut peut-être le short accéléré ?
-                    # Non, généralement un short est un extrait court, pas forcément accéléré.
-                    # L'aperçu était accéléré pour "voir vite".
-                    # Si le but est d'avoir un short accéléré, il faut garder l'accélération.
-                    # D'après le code précédent, le final était en vitesse normale ('-c copy' depuis source).
-                    # Donc on garde la vitesse normale.
                     
                     if temp_filtered_path.exists():
                         import shutil
