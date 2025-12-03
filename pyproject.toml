@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kosmos"
+version = "0.1.0"
+description = "KOSMOS - Dérushage vidéo sous-marine (PyQt6 + traitement OpenCV)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "KOSMOS contributors" }]
+dependencies = [
+    "numpy>=1.26,<2.0",
+    "opencv-python-headless>=4.8,<5.0",
+    "matplotlib>=3.8,<3.9",
+    "PyQt6>=6.6,<6.11",
+    "pyqtgraph>=0.13,<0.15",
+    "pandas>=2.1,<2.3",
+    "ephem>=4.1",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[project.urls]
+Homepage = "https://example.com/kosmos"
+Repository = "https://example.com/kosmos/repo"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "kosmos_processing*",
+    "models*",
+    "controllers*",
+    "views*",
+    "components*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
