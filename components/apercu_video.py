@@ -1,7 +1,7 @@
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFileDialog, QMessageBox, QGridLayout
-)
+"""Aperçu des vidéos avec miniatures
+Affiche jusqu'à 6 vidéos avec possibilité de sélection, renommage et suppression."""
+
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QFileDialog, QMessageBox, QGridLayout)
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 import os
@@ -38,11 +38,6 @@ class ApercuVideos(QWidget):
         self.grid.setSpacing(10)
         layout_principal.addLayout(self.grid)
 
-        # Lecteur vidéo (à décommenter si vous avez le composant)
-        # self.lecteur = VideoPlayer()
-        # self.lecteur.hide()  # caché tant qu'aucune vidéo n'est sélectionnée
-        # layout_principal.addWidget(self.lecteur)
-
         # Boutons de gestion
         boutons_layout = QHBoxLayout()
         self.bouton_renommer = QPushButton("Renommer")
@@ -66,9 +61,12 @@ class ApercuVideos(QWidget):
                 background-color: #0D47A1;
             }
         """
+
+        #Application du style
         self.bouton_renommer.setStyleSheet(button_style)
         self.bouton_supprimer.setStyleSheet(button_style.replace("#2196F3", "#f44336").replace("#1976D2", "#d32f2f").replace("#0D47A1", "#b71c1c"))
 
+        # Ajout des boutons au layout
         boutons_layout.addWidget(self.bouton_renommer)
         boutons_layout.addWidget(self.bouton_supprimer)
         layout_principal.addLayout(boutons_layout)
@@ -87,6 +85,7 @@ class ApercuVideos(QWidget):
             print(f"⚠️ Le dossier {self.dossier_videos} n'existe pas")
             return
             
+        # Liste des fichiers vidéo
         fichiers = [f for f in os.listdir(self.dossier_videos) if f.lower().endswith((".mp4", ".avi", ".mov", ".mkv"))]
         fichiers = fichiers[:6]
         self.videos = fichiers
@@ -135,6 +134,7 @@ class ApercuVideos(QWidget):
             # Ajouter à la grille (2 lignes de 3 colonnes)
             self.grid.addWidget(container, i // 3, i % 3)
 
+
     def selectionner_video(self, chemin):
         """Affiche la vidéo sélectionnée dans le lecteur."""
         self.video_selectionnee = chemin
@@ -146,6 +146,7 @@ class ApercuVideos(QWidget):
         
         self.highlight_selection(chemin)
         self.videoSelectionnee.emit(chemin)
+
 
     def highlight_selection(self, chemin_selectionne):
         """Met en évidence la miniature sélectionnée."""
@@ -161,6 +162,7 @@ class ApercuVideos(QWidget):
                             label.setStyleSheet("border: 3px solid #1E90FF; background-color: #333;")
                         else:
                             label.setStyleSheet("border: 2px solid gray; background-color: #333;")
+
 
     def renommer_video(self):
         """Renomme la vidéo sélectionnée."""

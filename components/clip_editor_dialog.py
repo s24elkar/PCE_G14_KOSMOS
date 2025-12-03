@@ -33,11 +33,11 @@ class ClipEditorDialog(QDialog):
         else:
             # On charge la vidéo en demandant de ne pas la mettre en pause
             self.video_player.load_video(self.video_path, autoplay=False)
-            # Une fois la vidéo chargée, la durée sera connue.
             # On connecte le signal duration_changed du thread vidéo.
             self.video_player.video_thread.duration_changed.connect(self.setup_selection_handles)
             # On connecte position_changed pour forcer la boucle dans la sélection.
             self.video_player.video_thread.position_changed.connect(self.check_playback_bounds)
+
 
     def init_ui(self):
         """Initialise l'interface utilisateur du dialogue."""
@@ -48,17 +48,18 @@ class ClipEditorDialog(QDialog):
         # Lecteur vidéo
         self.video_player = VideoPlayer()
         self.timeline = self.video_player.timeline
+
         # Connecter le signal de changement de sélection à deux slots
         self.timeline.selection_changed.connect(self.update_time_labels) # Pour les labels de temps
         self.timeline.selection_changed.connect(self.preview_frame_at_handle) # Pour l'aperçu visuel
         main_layout.addWidget(self.video_player, stretch=1)
 
-        # Panneau de contrôle en bas
+        # Panneau de contrôle en bas de la fenêtre
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
         control_layout.setSpacing(10)
 
-        # Champ pour le nom
+        # Champ pour renseigner le nom
         name_layout = QHBoxLayout()
         name_label = QLabel("Nom de l'extrait :")
         self.name_input = QLineEdit()
@@ -94,14 +95,17 @@ class ClipEditorDialog(QDialog):
 
         main_layout.addWidget(control_panel)
 
+
     def setup_selection_handles(self, duration_ms):
         """Configure les poignées de sélection une fois la durée de la vidéo connue."""
         if duration_ms <= 0: return
 
+        # Initialiser la timeline avec les poignées de sélection
         self.timeline.selection_mode = True
         start_ratio = self.initial_start_ms / duration_ms
         end_ratio = self.initial_end_ms / duration_ms
 
+        # Positionner les poignées de sélection
         self.timeline.start_handle_pos = int(start_ratio * 1000)
         self.timeline.end_handle_pos = int(end_ratio * 1000)
         self.timeline.update()
@@ -109,8 +113,9 @@ class ClipEditorDialog(QDialog):
         # Mettre à jour les labels une première fois
         self.update_time_labels(self.timeline.start_handle_pos, self.timeline.end_handle_pos)
         
-        # On attend un court instant que la fenÃªtre soit bien affichÃ©e avant de se positionner et de jouer
+        # On attend un court instant que la fenêtre soit bien affichée avant de se positionner et de jouer
         QTimer.singleShot(100, self.start_playback_at_selection)
+
 
     def start_playback_at_selection(self):
         """Se positionne au début de la sélection et lance la lecture."""
@@ -118,6 +123,7 @@ class ClipEditorDialog(QDialog):
         self.video_player.video_thread.seek(target_frame)
         self.video_player.video_thread.play()
         
+
     def update_time_labels(self, start_pos_1000, end_pos_1000):
         """Met à jour les labels de temps quand les poignées bougent."""
         duration_ms = self.video_player.duration
@@ -128,6 +134,7 @@ class ClipEditorDialog(QDialog):
 
         self.start_time_label.setText(f"{start_ms // 60000:02d}:{(start_ms % 60000) // 1000:02d}.{start_ms % 1000:03d}")
         self.end_time_label.setText(f"{end_ms // 60000:02d}:{(end_ms % 60000) // 1000:02d}.{end_ms % 1000:03d}")
+
 
     def preview_frame_at_handle(self, start_pos_1000, end_pos_1000):
         """
@@ -150,9 +157,12 @@ class ClipEditorDialog(QDialog):
             target_ms = int((end_pos_1000 / 1000.0) * duration_ms)
         else:
             return # Aucune poignée n'est déplacée
-
+        
+        # Calculer le frame correspondant à la position en ms
         target_frame = int((target_ms / duration_ms) * self.video_player.video_thread.total_frames)
+        # Se positionner sur le frame correspondant
         self.video_player.video_thread.seek(target_frame)
+
 
     def check_playback_bounds(self, position_ms):
         """
@@ -165,10 +175,11 @@ class ClipEditorDialog(QDialog):
         # Obtenir les bornes de la sélection en millisecondes
         _, start_ms, end_ms = self.get_values()
 
-        # Si la position actuelle dépasse la borne de fin
         if position_ms >= end_ms:
+            # Si on dépasse la fin, on revient au début de la sélection
             target_frame = int((start_ms / self.video_player.duration) * self.video_player.video_thread.total_frames)
             self.video_player.video_thread.seek(target_frame)
+
 
     def get_values(self):
         """Retourne le nom, et les temps de début/fin en ms."""
@@ -177,6 +188,7 @@ class ClipEditorDialog(QDialog):
         start_ms = int((self.timeline.start_handle_pos / 1000.0) * duration_ms)
         end_ms = int((self.timeline.end_handle_pos / 1000.0) * duration_ms)
         return name, start_ms, end_ms
+    
 
     def on_accept(self):
         """Vérifie le nom avant d'accepter."""
@@ -188,6 +200,7 @@ class ClipEditorDialog(QDialog):
             QMessageBox.warning(self, "Plage invalide", "La borne de début doit être avant la borne de fin.")
             return
         self.accept()
+        
         
     def closeEvent(self, event):
         """S'assure que le lecteur est arrêté à la fermeture."""

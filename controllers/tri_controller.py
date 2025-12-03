@@ -12,13 +12,13 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from datetime import datetime
 
-# --- AJOUT NÉCESSAIRE ---
+
 try:
     import requests
 except ImportError:
     print("ERREUR: La bibliothèque 'requests' est manquante. Veuillez l'installer avec : pip install requests")
     sys.exit(1)
-# --- FIN AJOUT ---
+
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -34,7 +34,7 @@ class TriKosmosController(QObject):
         super().__init__(parent)
         self.model = model
     
-    # ... (Méthodes inchangées : obtenir_videos, selectionner_video, renommer_video, conserver_video, supprimer_video) ...
+    
     def obtenir_videos(self):
         return self.model.obtenir_videos()
     
@@ -77,7 +77,7 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur suppression vidéo: {e}")
             return False
 
-    # --- MODIFICATION: Ne charge QUE la section 'video' dans les métadonnées propres ---
+   
     def charger_metadonnees_depuis_json(self, video) -> bool:
         """Charge les métadonnées propres (section 'video' uniquement) depuis le JSON."""
         try:
@@ -101,7 +101,7 @@ class TriKosmosController(QObject):
                         full_key = f"{prefix}{key}"
                         video.metadata_propres[full_key] = str(value) if value is not None else ""
 
-            # Charger UNIQUEMENT la section "video" ici (les autres vont dans 'communes')
+            # Charger uniquement la section "video" ici (les autres vont dans 'communes')
             if 'video' in data:
                 flatten_dict(data['video'])
             
@@ -112,7 +112,7 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur lecture JSON propres: {e}")
             return False
 
-    # --- MODIFICATION: Charge 'system' ET 'campaign' dans les métadonnées communes ---
+    
     def charger_metadonnees_communes_depuis_json(self, video) -> bool:
         """Charge les métadonnées communes (sections 'system' et 'campaign') depuis le JSON."""
         try:
@@ -211,7 +211,6 @@ class TriKosmosController(QObject):
             print(f"❌ Erreur sauvegarde JSON: {e}")
             return False
 
-    # --- MODIFICATION: AJOUT DE LA VALIDATION DES TYPES ---
     def modifier_metadonnees_propres(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """
         Vérifie les types et modifie les métadonnées.
@@ -221,8 +220,7 @@ class TriKosmosController(QObject):
         if not video:
             return False, "Vidéo introuvable."
 
-        # Liste des champs qui DOIVENT être numériques (float ou int)
-        # Basé sur les suffixes ou noms de champs
+        # Liste des champs qui doivent être numériques (float ou int)
         numeric_fields = [
             'latitude', 'longitude', 'depth', 'temperature', 'salinity', 'pressure', 
             'seaState', 'swell', 'wind', 'tempAir', 'atmPress', 'coefficient',
@@ -250,7 +248,7 @@ class TriKosmosController(QObject):
             return True, "Sauvegarde réussie."
         else:
             return False, "Erreur lors de l'écriture du fichier JSON."
-    # --- FIN MODIFICATION ---
+    
 
     def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """
@@ -260,9 +258,6 @@ class TriKosmosController(QObject):
         video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
         if not video:
             return False, "Vidéo introuvable."
-
-        # Validation optionnelle (si nécessaire)
-        # Pas de validation stricte pour les métadonnées communes (texte libre généralement)
 
         # Mise à jour en mémoire
         for key, value in metadonnees.items():
@@ -350,10 +345,6 @@ class TriKosmosController(QObject):
         return self.model.get_angle_event_times(nom_video)
 
     def precalculer_metadonnees_externes(self, nom_video: str) -> bool:
-        # ... (code identique au précédent, voir précalcul météo/astro complet) ...
-        # Pour raccourcir la réponse, je suppose que vous avez déjà la fonction de pré-calcul correcte
-        # (celle avec l'API Marine et wttr.in)
-        # Je la réinsère ici pour être sûr que le fichier soit complet.
         print(f"🔄 Lancement du pré-calcul pour {nom_video}...")
         if not self.model.campagne_courante: return False
         video = self.model.campagne_courante.obtenir_video(nom_video)
@@ -362,7 +353,7 @@ class TriKosmosController(QObject):
         try:
             lat_str = video.metadata_propres.get('gpsDict_latitude', 'N/A')
             lon_str = video.metadata_propres.get('gpsDict_longitude', 'N/A')
-            date_str = video.metadata_communes.get('campaign_dateDict_date', 'N/A') # Attention: Date est maintenant dans communes!
+            date_str = video.metadata_communes.get('campaign_dateDict_date', 'N/A') 
             
             # Si date pas trouvée dans communes, chercher dans propres (au cas où)
             if date_str == 'N/A':

@@ -346,11 +346,10 @@ class ExtractionKosmosController(QObject):
         if not self.view:
             return
 
-        # --- AJOUT IMPORTANT : Recharger les métadonnées depuis le JSON ---
         self._charger_metadonnees_propres_json(video)
         self._charger_metadonnees_communes_json(video)
-        self._charger_donnees_timeseries_csv(video) # AJOUT
-        # --- FIN AJOUT ---
+        self._charger_donnees_timeseries_csv(video) 
+        
 
         # Préparer les métadonnées STATIQUES pour l'affichage.
         # On ne passe QUE le temps de départ. Le reste (temp, pression, lux)
@@ -362,7 +361,7 @@ class ExtractionKosmosController(QObject):
         video_data = {
             'path': video.chemin,
             'metadata': metadata_display,
-            'timeseries_data': video.timeseries_data # CORRECTION: Utiliser les données chargées
+            'timeseries_data': video.timeseries_data 
         }
 
         # Demander à la vue de charger cette vidéo

@@ -12,7 +12,7 @@ sys.path.insert(0, str(project_root))
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 
-# Import de vos composants depuis components/
+# Import des composants depuis components/
 from components.navbar import NavBar
 from components.explorateur import MediaExplorer
 from components.lecteur import VideoPlayer
@@ -127,10 +127,10 @@ class ExtractionView(QWidget):
         # Créer un widget container pour la colonne gauche
         left_widget = QWidget()
         left_widget.setLayout(left_column)
-        # >>> MOD: agrandir la largeur de l'explorateur / colonne gauche
-        left_widget.setMinimumWidth(300)  # avant ~260
-        left_widget.setMaximumWidth(380)  # avant ~340
-        # <<< MOD
+        
+        left_widget.setMinimumWidth(300)  
+        left_widget.setMaximumWidth(380) 
+    
         
         # Ajouter la colonne gauche à la grille (colonne 0, lignes 0-1)
         grid_layout.addWidget(left_widget, 0, 0, 2, 1)
@@ -217,11 +217,11 @@ class ExtractionView(QWidget):
         # Ajouter à la grille : colonne 1-2, lignes 0-1 (toute la hauteur)
         grid_layout.addWidget(center_right_widget, 0, 1, 2, 1)
         
-        # >>> MOD: donner un peu plus de place à la colonne gauche
+    
         # Colonne 0 (gauche) et colonne 1 (droite)
-        grid_layout.setColumnStretch(0, 2)  # avant: 1
-        grid_layout.setColumnStretch(1, 5)  # avant: 4
-        # <<< MOD
+        grid_layout.setColumnStretch(0, 2) 
+        grid_layout.setColumnStretch(1, 5)  
+        
         
         content_widget.setLayout(grid_layout)
         main_layout.addWidget(content_widget)
@@ -286,7 +286,7 @@ class ExtractionView(QWidget):
                     self.image_correction.brightness_changed.connect(
                         self.controller.on_brightness_changed
                     )
-                # NOUVEAU : Connexion des signaux des filtres de ImageCorrection
+                # Connexion des signaux des filtres de ImageCorrection
                 self.image_correction.gamma_toggled.connect(self.controller.on_toggle_gamma)
                 self.image_correction.contrast_clahe_toggled.connect(self.controller.on_toggle_contrast)
                 self.image_correction.denoise_toggled.connect(self.controller.on_toggle_denoise)
@@ -297,16 +297,16 @@ class ExtractionView(QWidget):
                 self.image_correction.hue_changed.connect(self.controller.on_hue_changed)
                 self.image_correction.temperature_changed.connect(self.controller.on_temperature_changed)
 
-            # NOUVEAU : Connexion de l'éditeur de courbe séparé
+            # Connexion de l'éditeur de courbe séparé
             if hasattr(self, 'tone_curve_editor'):
                 self.tone_curve_editor.curve_changed.connect(self.controller.on_curve_changed)
 
                 
-            # NOUVEAU : Connexion du signal de réinitialisation des filtres du lecteur
+            # Connexion du signal de réinitialisation des filtres du lecteur
             if hasattr(self, 'video_player') and hasattr(self.video_player, 'filters_reset'):
                 self.video_player.filters_reset.connect(self.on_filters_reset_by_player)
 
-            # NOUVEAU : Connexion du signal de correction automatique du composant ImageCorrection
+            # Connexion du signal de correction automatique du composant ImageCorrection
             if hasattr(self.image_correction, 'color_correction_clicked'):
                 self.image_correction.color_correction_clicked.connect(self.controller.on_color_correction)
             
@@ -317,7 +317,7 @@ class ExtractionView(QWidget):
                     self.video_player.play_pause_clicked.connect(
                         self.controller.on_play_pause
                     )
-                # NOUVEAU : Connecter les données de l'histogramme du lecteur à l'affichage
+                # Connecter les données de l'histogramme du lecteur à l'affichage
                 if hasattr(self.video_player, 'histogram_data_ready') and hasattr(self, 'histogram'):
                     self.video_player.histogram_data_ready.connect(self.histogram.update_histogram)
 
@@ -381,7 +381,7 @@ class ExtractionView(QWidget):
         if hasattr(self, 'video_player'):
             if hasattr(self.video_player, 'update_metadata') and 'metadata' in video_data:
                 self.video_player.update_metadata(**video_data['metadata'])
-            # CORRECTION : Transmettre les données temporelles au lecteur
+            # Transmettre les données temporelles au lecteur
             if hasattr(self.video_player, 'set_timeseries_data') and 'timeseries_data' in video_data:
                 self.video_player.set_timeseries_data(video_data['timeseries_data'])
             if hasattr(self.video_player, 'load_video') and 'path' in video_data:

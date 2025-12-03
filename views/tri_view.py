@@ -9,11 +9,11 @@ import json
 import subprocess
 from pathlib import Path
 
-# --- AJOUTS OPENCV ---
+
 import cv2
 import numpy as np
 import time
-# --- FIN AJOUTS ---
+
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -24,10 +24,10 @@ from PyQt6.QtWidgets import (
     QGridLayout, QLineEdit, QMenu, QMessageBox, QDialog, QScrollArea,
     QSizePolicy, QApplication
 )
-# --- AJOUT QTimer et QImage ---
+
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QThread, QTimer, QSize
 from PyQt6.QtGui import QFont, QAction, QPalette, QColor, QPixmap, QMovie, QImage
-# --- FIN AJOUT ---
+
 
 # Import du contrôleur
 from controllers.tri_controller import TriKosmosController
@@ -709,7 +709,7 @@ class TriKosmosView(QWidget):
         
         return {'container': row_widget, 'widget': value_widget}
     
-    # --- NOUVELLE MÉTHODE: Remplir les communes dynamiquement ---
+    #Remplir les communes dynamiquement ---
     def remplir_metadonnees_communes(self, metadata_communes: dict):
         self.vider_layout(self.meta_communes_scroll_layout)
         self.meta_communes_fields.clear()

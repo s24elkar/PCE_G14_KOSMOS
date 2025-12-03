@@ -1,8 +1,7 @@
 """
 Fenêtre de dialogue pour prévisualiser un short avant de l'enregistrer.
 """
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-                             QMessageBox, QLineEdit)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,QMessageBox, QLineEdit)
 from PyQt6.QtCore import Qt, QUrl
 from .lecteur import VideoPlayer
 
@@ -28,6 +27,7 @@ class ShortPreviewDialog(QDialog):
             self.video_player.load_video(self.temp_video_path, autoplay=True)
             # Activer la lecture en boucle
             self.video_player.video_thread.set_looping(True)
+
 
     def init_ui(self):
         """Initialise l'interface utilisateur du dialogue."""
@@ -60,7 +60,7 @@ class ShortPreviewDialog(QDialog):
         main_layout.addLayout(name_layout)
 
 
-        # Boutons
+        # Boutons de validation
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
@@ -79,9 +79,11 @@ class ShortPreviewDialog(QDialog):
 
         main_layout.addLayout(button_layout)
 
+
     def get_short_name(self):
         """Retourne le nom entré par l'utilisateur."""
         return self.name_input.text().strip()
+
 
     def on_accept(self):
         """Vérifie que le nom n'est pas vide avant d'accepter."""
@@ -89,6 +91,7 @@ class ShortPreviewDialog(QDialog):
             QMessageBox.warning(self, "Nom manquant", "Veuillez entrer un nom pour le short.")
             return
         self.accept()
+
 
     def cleanup(self):
         """Arrête proprement le lecteur vidéo et libère les ressources."""
@@ -101,6 +104,8 @@ class ShortPreviewDialog(QDialog):
             self.video_player.close() # S'assurer que le widget est détruit
             print("🗑️ Lecteur de l'aperçu arrêté et ressource libérée.")
 
+    # Redéfinir reject et accept pour nettoyer les ressources
+    
     def reject(self):
         self.cleanup()
         super().reject()
