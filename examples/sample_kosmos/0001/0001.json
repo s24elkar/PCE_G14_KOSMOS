@@ -1,0 +1,11 @@
+{
+  "video": {
+    "hourDict": { "HMSOS": "12:00:00" },
+    "gpsDict": {
+      "latitude": 48.1234,
+      "longitude": -4.5678
+    }
+  },
+  "system": { "camera": "KOSMOS_CAM", "model": "A1" },
+  "campaign": { "dateDict": { "date": "2024-01-15" } }
+}
