@@ -20,20 +20,24 @@ class NavBar(QWidget):
     def __init__(self, tabs=None, default_tab=None, parent=None):
         """
         Args:
-            tabs: Liste des noms d'onglets (par défaut: ["Fichier", "Tri", "Extraction", "Évènements"])
+            tabs: Liste des noms d'onglets (par défaut: ["Fichier", "Tri", "IA", "Extraction", "Évènements"])
             default_tab: Onglet actif par défaut (par défaut: premier onglet)
             parent: Widget parent
         """
         super().__init__(parent)
 
-        
+
         # Configuration des onglets
         if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Extraction", "Évènements"]
+            self.tabs = ["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"]
         else:
             self.tabs = tabs
             
-        self.default_tab = default_tab if default_tab else (self.tabs[1] if len(self.tabs) > 1 else self.tabs[0])
+        # Rendre l'onglet Tri par défaut si aucun onglet précisé
+        if default_tab:
+            self.default_tab = default_tab
+        else:
+            self.default_tab = "Tri" if "Tri" in self.tabs else (self.tabs[0] if self.tabs else "")
         
         # Variables pour le drag & drop
         self.drag_position = None
@@ -328,7 +332,7 @@ if __name__ == '__main__':
             # Ajouter la navbar personnalisée
             # Vous pouvez personnaliser les onglets ici
             self.navbar = NavBar(
-                tabs=["Fichier", "Tri", "Extraction", "Évènements"],
+                tabs=["Fichier", "Tri", "IA", "Extraction", "Évènements"],
                 default_tab="Tri"
             )
             

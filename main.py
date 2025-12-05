@@ -33,6 +33,10 @@ except ImportError:
     from views.importation_view import ImportationKosmosView as ImportationView
     from controllers.importation_controller import ImportationKosmosController as ImportationController
 
+# 2bis. Téléchargement
+from views.telechargement_view import TelechargementKosmosView
+from controllers.telechargement_controller import TelechargementController
+
 # 3. Tri
 from views.tri_view import TriKosmosView
 from controllers.tri_controller import TriKosmosController
@@ -40,6 +44,10 @@ from controllers.tri_controller import TriKosmosController
 # 4. Extraction (C'est ici que ça manquait peut-être)
 from views.extraction_view import ExtractionView
 from controllers.extraction_controller import ExtractionKosmosController
+
+# 5. IA
+from ia_module.ia_view import IAKosmosView
+from ia_module.ia_controller import IAKosmosController
 
 
 class KosmosApplication(QMainWindow):
@@ -57,14 +65,18 @@ class KosmosApplication(QMainWindow):
         # Contrôleurs pour chaque page
         self.accueil_controller = None
         self.importation_controller = None
+        self.telechargement_controller = None
         self.tri_controller = None
         self.extraction_controller = None 
+        self.ia_controller = None
         
         # Vues
         self.accueil_view = None
         self.importation_view = None
+        self.telechargement_view = None
         self.tri_view = None
         self.extraction_view = None
+        self.ia_view = None
         
         self.init_ui()
         self.init_controllers()
@@ -94,6 +106,11 @@ class KosmosApplication(QMainWindow):
         self.importation_controller = ImportationController(self.model)
         self.importation_view = ImportationView(self.importation_controller)
         self.stack.addWidget(self.importation_view)
+
+        # PAGE DE TÉLÉCHARGEMENT
+        self.telechargement_controller = TelechargementController(self.model)
+        self.telechargement_view = TelechargementKosmosView(self.telechargement_controller)
+        self.stack.addWidget(self.telechargement_view)
         
         # PAGE DE TRI
         self.tri_controller = TriKosmosController(self.model)
@@ -109,6 +126,11 @@ class KosmosApplication(QMainWindow):
         # Charger les données uniquement lorsque la vue est réellement affichée
         self.extraction_view.view_shown.connect(self.extraction_controller.load_initial_data)
         self.stack.addWidget(self.extraction_view)
+
+        # PAGE IA
+        self.ia_controller = IAKosmosController(self.model)
+        self.ia_view = IAKosmosView(self.ia_controller)
+        self.stack.addWidget(self.ia_view)
         
         # Afficher la page d'accueil par défaut
         self.stack.setCurrentWidget(self.accueil_view)
@@ -127,6 +149,10 @@ class KosmosApplication(QMainWindow):
         # Navigation depuis la page d'importation
         if self.importation_controller:
             self.importation_controller.navigation_demandee.connect(self.naviguer_vers)
+
+        # Navigation depuis la page de téléchargement
+        if self.telechargement_controller:
+            self.telechargement_controller.navigation_demandee.connect(self.naviguer_vers)
             
         # Navigation depuis la page de tri
         if self.tri_controller:
@@ -135,9 +161,14 @@ class KosmosApplication(QMainWindow):
         # Navigation depuis la page d'extraction
         if self.extraction_controller:
             self.extraction_controller.navigation_demandee.connect(self.naviguer_vers)
+
+        # Navigation depuis la page IA
+        if self.ia_controller:
+            self.ia_controller.navigation_demandee.connect(self.naviguer_vers)
         
         # Gérer les changements d'onglet dans la navbar (Vue -> Main)
-        for view in [self.accueil_view, self.importation_view, self.tri_view, self.extraction_view]:
+        for view in [self.accueil_view, self.importation_view, self.telechargement_view,
+                     self.tri_view, self.extraction_view, self.ia_view]:
             if view and hasattr(view, 'navbar'):
                 view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
         
@@ -161,6 +192,12 @@ class KosmosApplication(QMainWindow):
             if hasattr(self.importation_view, 'auto_open'):
                 self.importation_view.auto_open = True
 
+        elif nom_page == "telechargement":
+            if self.telechargement_view:
+                self.stack.setCurrentWidget(self.telechargement_view)
+            else:
+                print("❌ Page de téléchargement non disponible")
+
         elif nom_page == "tri":
             if self.tri_view:
                 self.tri_view.charger_videos()
@@ -175,6 +212,13 @@ class KosmosApplication(QMainWindow):
             else:
                 print("❌ Page d'extraction non disponible")
 
+        elif nom_page == "ia":
+            if self.ia_view:
+                self.ia_view.charger_videos()
+                self.stack.setCurrentWidget(self.ia_view)
+            else:
+                print("❌ Page IA non disponible")
+
         elif nom_page == "evenements":
             print("⚠️ Page d'événements pas encore implémentée")
         else:
@@ -184,7 +228,9 @@ class KosmosApplication(QMainWindow):
         """Gère le changement d'onglet dans la navbar"""
         mapping = {
             'Fichier': 'accueil',
+            'Téléchargement': 'telechargement',
             'Tri': 'tri',
+            'IA': 'ia',
             'Extraction': 'extraction',
             'Évènements': 'evenements'
         }
@@ -199,6 +245,8 @@ class KosmosApplication(QMainWindow):
             self.tri_view.charger_videos()
         if self.extraction_controller:
             self.extraction_controller.load_initial_data()
+        if self.ia_controller and self.ia_view:
+            self.ia_view.charger_videos()
     
     def on_campagne_ouverte(self, chemin: str):
         print(f"✅ Campagne ouverte : {chemin}")
@@ -207,6 +255,8 @@ class KosmosApplication(QMainWindow):
             self.tri_view.charger_videos()
         if self.extraction_controller:
             self.extraction_controller.load_initial_data()
+        if self.ia_controller and self.ia_view:
+            self.ia_view.charger_videos()
     
     def closeEvent(self, event):
         if self.model.campagne_courante:

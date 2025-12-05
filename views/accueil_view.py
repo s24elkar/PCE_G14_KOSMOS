@@ -160,7 +160,7 @@ class NavBarAvecMenu(QWidget):
         super().__init__(parent)
         
         if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Extraction", "Évènements"]
+            self.tabs = ["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"]
         else:
             self.tabs = tabs
             
@@ -430,7 +430,7 @@ class AccueilKosmosView(QWidget):
         main_layout.setSpacing(0)
         
         self.navbar = NavBarAvecMenu(
-            tabs=["Fichier", "Tri", "Extraction", "Évènements"],
+            tabs=["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"],
             default_tab="Fichier",
             disable_tabs=True
         )
