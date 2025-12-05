@@ -35,7 +35,7 @@ class NavBarAvecMenu(QWidget):
         super().__init__(parent)
         
         if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Extraction", "Évènements"]
+            self.tabs = ["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"]
         else:
             self.tabs = tabs
             
@@ -196,7 +196,10 @@ class ImportationKosmosView(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        self.navbar = NavBarAvecMenu(tabs=["Fichier", "Tri", "Extraction", "Évènements"], default_tab="Fichier")
+        self.navbar = NavBarAvecMenu(
+            tabs=["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"],
+            default_tab="Fichier"
+        )
         main_layout.addWidget(self.navbar)
         
         # CONTENU NOIR
