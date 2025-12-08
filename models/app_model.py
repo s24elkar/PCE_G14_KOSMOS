@@ -93,6 +93,122 @@ class Video:
         
         return video
 
+    def charger_metadonnees_propres_json(self) -> bool:
+        """Charge les métadonnées propres (section 'video') depuis le JSON."""
+        try:
+            json_path = Path(self.chemin).parent / f"{self.dossier_numero}.json"
+            if not json_path.exists():
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            self.metadata_propres.clear()
+            
+            def flatten_dict(section_data, prefix=''):
+                for key, value in section_data.items():
+                    if isinstance(value, dict):
+                        flatten_dict(value, prefix=f"{prefix}{key}_")
+                    else:
+                        full_key = f"{prefix}{key}"
+                        self.metadata_propres[full_key] = str(value) if value is not None else ""
+
+            if 'video' in data:
+                flatten_dict(data['video'])
+            return True
+        except Exception as e:
+            print(f"❌ Erreur lecture JSON propres (model): {e}")
+            return False
+
+    def charger_metadonnees_communes_json(self) -> bool:
+        """Charge les métadonnées communes ('system', 'campaign') depuis le JSON."""
+        try:
+            json_path = Path(self.chemin).parent / f"{self.dossier_numero}.json"
+            if not json_path.exists(): return False
+
+            with open(json_path, 'r', encoding='utf-8') as f: data = json.load(f)
+            self.metadata_communes.clear()
+
+            def flatten_dict(d, p=''):
+                for k, v in d.items():
+                    if isinstance(v, dict): flatten_dict(v, f"{p}{k}_")
+                    else: self.metadata_communes[f"{p}{k}"] = str(v) if v is not None else ""
+            
+            if 'system' in data: flatten_dict(data['system'], "system_")
+            if 'campaign' in data: flatten_dict(data['campaign'], "campaign_")
+            return True
+        except Exception as e:
+            print(f"❌ Erreur lecture JSON communes (model): {e}")
+            return False
+
+    def charger_donnees_timeseries_csv(self) -> bool:
+        """Charge les données temporelles (temp, pression...) depuis le CSV."""
+        self.timeseries_data = [] # Réinitialiser les données
+        try:
+            csv_path = Path(self.chemin).parent / f"{self.dossier_numero}.csv"
+            if not csv_path.exists():
+                print(f"⚠️ Fichier CSV non trouvé pour la vidéo: {csv_path}")
+                return False
+
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                # Détecter le délimiteur en lisant la première ligne
+                first_line = f.readline()
+                delimiter = ';' if ';' in first_line else ','
+                f.seek(0) # Revenir au début du fichier
+                reader = csv.DictReader(f, delimiter=delimiter)
+                
+                def hms_to_seconds(hms_str):
+                    """Convertit une chaîne 'HHhMMmSSs' en secondes totales."""
+                    try:
+                        parts = hms_str.lower().replace('s', '').split('h')
+                        h = int(parts[0])
+                        parts = parts[1].split('m')
+                        m = int(parts[0])
+                        s = int(parts[1])
+                        return h * 3600 + m * 60 + s
+                    except (ValueError, IndexError):
+                        return None
+
+                # Lire la première ligne de données pour obtenir l'heure de début
+                all_rows = list(reader)
+                if not all_rows:
+                    return False
+
+                start_hms_str = all_rows[0].get('HMS')
+                start_total_seconds = hms_to_seconds(start_hms_str)
+
+                if start_total_seconds is None:
+                    print("❌ Erreur: Impossible de lire l'heure de début (colonne HMS) dans le CSV.")
+                    return False
+
+                # Mapper les noms de colonnes possibles vers les noms standard
+                column_mapping = {
+                    'pression': 'Pression',
+                    'temperature': 'TempC',
+                    'lux': 'Lux'
+                }
+                
+                for row in all_rows:
+                    processed_row = {}
+                    current_hms_str = row.get('HMS')
+                    current_total_seconds = hms_to_seconds(current_hms_str)
+
+                    for standard_name, csv_name in column_mapping.items():
+                        if csv_name in row and row[csv_name] and row[csv_name].strip():
+                            value = row[csv_name].strip().replace(',', '.')
+                            processed_row[standard_name] = value
+                    
+                    if current_total_seconds is not None:
+                        delta_seconds = current_total_seconds - start_total_seconds
+                        processed_row['timestamp_ms'] = int(delta_seconds * 1000)
+                        self.timeseries_data.append(processed_row)
+
+            print(f"✅ Données CSV chargées pour {self.nom}: {len(self.timeseries_data)} points.")
+            return True
+        except Exception as e:
+            print(f"❌ Erreur lecture CSV (model): {e}")
+            return False
+
 
 class Campagne:
     """
@@ -410,7 +526,6 @@ class ApplicationModel:
         
         return video
     
-    # --- MODIFICATION DE CETTE FONCTION ---
     def _charger_metadata_kosmos_csv(self, video: Video, chemin_csv: str) -> bool:
         """
         Charge les métadonnées DE BASE (Communes + Durée) depuis le CSV KOSMOS.
@@ -449,10 +564,7 @@ class ApplicationModel:
                 if csv_duree and csv_duree != "--:--" and csv_duree.strip() != "":
                     video.duree = csv_duree
                 
-                # --- MODIFICATION: Ne plus lire les données CTD/GPS/Date du CSV ---
-                # Ces données proviendront exclusivement du JSON lors de l'étape
-                # 'charger_metadonnees_depuis_json' dans le contrôleur.
-                # --- FIN MODIFICATION ---
+                
 
                 print(f"       ... Données communes (Système, Durée) chargées depuis CSV.")
 
@@ -461,7 +573,7 @@ class ApplicationModel:
         except Exception as e:
             print(f"⚠️ Erreur lecture CSV {chemin_csv}: {e}")
             return False
-    # --- FIN MODIFICATION ---
+    
     
     def _formater_taille(self, taille_bytes: int) -> str:
         """Formate une taille en octets"""

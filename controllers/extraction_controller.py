@@ -18,104 +18,7 @@ from PyQt6.QtWidgets import QInputDialog, QApplication
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-class UnderwaterFilters:
-    """
-    Collection de filtres rapides (vectorisés) pour améliorer des images sous-marines.
-    Les méthodes opèrent sur des frames BGR (numpy.ndarray uint8).
-    """
-
-    @staticmethod
-    def correct_blue_dominance(frame: np.ndarray, factor: float = 0.12) -> np.ndarray:
-        """
-        Réduit une dominante bleue en renforçant légèrement les canaux R et G.
-        :param factor: intensité de correction (0.12 => +12% sur R/G).
-        """
-        r, g, b = cv2.split(frame)
-        r = cv2.add(r, (r * factor).astype(np.uint8))
-        g = cv2.add(g, (g * factor).astype(np.uint8))
-        corrected = cv2.merge((r, g, b))
-        return np.clip(corrected, 0, 255).astype(np.uint8)
-
-    @staticmethod
-    def apply_gamma(frame: np.ndarray, gamma: float = 1.2) -> np.ndarray:
-        """
-        Correction gamma via table de correspondance.
-        gamma > 1 éclaircit les tons moyens.
-        """
-        gamma = max(gamma, 0.01)
-        inv_gamma = 1.0 / gamma
-        table = np.array([(i / 255.0) ** inv_gamma * 255 for i in np.arange(256)]).astype("uint8")
-        return cv2.LUT(frame, table)
-
-    @staticmethod
-    def enhance_contrast(frame: np.ndarray, clip_limit: float = 2.0, tile_grid: tuple[int, int] = (8, 8)) -> np.ndarray:
-        """
-        Améliore le contraste local via CLAHE sur la luminance (Y dans YCrCb).
-        """
-        ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
-        y, cr, cb = cv2.split(ycrcb)
-        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid)
-        y = clahe.apply(y)
-        merged = cv2.merge((y, cr, cb))
-        return cv2.cvtColor(merged, cv2.COLOR_YCrCb2BGR)
-
-    @staticmethod
-    def denoise(frame: np.ndarray, h: float = 10.0) -> np.ndarray:
-        return cv2.fastNlMeansDenoisingColored(frame, None, h, h, 7, 21)
-
-    @staticmethod
-    def sharpen(frame: np.ndarray) -> np.ndarray:
-        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-        return cv2.filter2D(frame, -1, kernel)
-
-    @staticmethod
-    def apply_contrast_brightness(frame: np.ndarray, contrast: int, brightness: int) -> np.ndarray:
-        """Ajuste le contraste et la luminosité. contrast/brightness de -100 à 100."""
-        alpha = 1.0 + contrast / 100.0  # Facteur de contraste
-        beta = brightness  # Décalage de luminosité
-        adjusted = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
-        return adjusted
-
-    @staticmethod
-    def apply_saturation(frame: np.ndarray, value: int) -> np.ndarray:
-        """Ajuste la saturation. value de -100 à 100."""
-        if value == 0: return frame
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        factor = 1.0 + value / 100.0
-        s = np.clip(s * factor, 0, 255).astype(np.uint8)
-        hsv = cv2.merge([h, s, v])
-        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
-    @staticmethod
-    def apply_hue(frame: np.ndarray, value: int) -> np.ndarray:
-        """Ajuste la teinte. value de -90 à 90."""
-        if value == 0: return frame
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        # L'échelle de teinte dans OpenCV est 0-179
-        h = (h.astype(np.int32) + value) % 180
-        hsv = cv2.merge([h.astype(np.uint8), s, v])
-        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
-    @staticmethod
-    def apply_temperature(frame: np.ndarray, value: int) -> np.ndarray:
-        """Ajuste la température de couleur. value de -100 (froid) à 100 (chaud)."""
-        if value == 0: return frame
-        # Convertir la valeur en un ajustement pour les canaux bleu et rouge
-        blue_factor = 1.0 - (value / 200.0 if value < 0 else 0)
-        red_factor = 1.0 + (value / 200.0 if value > 0 else 0)
-        b, g, r = cv2.split(frame)
-        b = np.clip(b * blue_factor, 0, 255).astype(np.uint8)
-        r = np.clip(r * red_factor, 0, 255).astype(np.uint8)
-        return cv2.merge([b, g, r])
-
-    @staticmethod
-    def apply_lut(frame: np.ndarray, lut: list) -> np.ndarray:
-        """Applique une table de correspondance (Look-Up Table)."""
-        if len(lut) != 256: return frame
-        table = np.array(lut, dtype=np.uint8)
-        return cv2.LUT(frame, table)
+from kosmos_processing.algos_correction import UnderwaterFilters
 
 class ExtractionKosmosController(QObject):
     """
@@ -222,133 +125,15 @@ class ExtractionKosmosController(QObject):
         else:
             print(f"❌ Erreur: Vidéo '{video_name}' non trouvée dans le modèle.")
 
-    def _charger_metadonnees_propres_json(self, video):
-        """Charge les métadonnées propres (section 'video') depuis le JSON."""
-        try:
-            json_path = Path(video.chemin).parent / f"{video.dossier_numero}.json"
-            if not json_path.exists():
-                return False
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            video.metadata_propres.clear()
-            
-            def flatten_dict(section_data, prefix=''):
-                for key, value in section_data.items():
-                    if isinstance(value, dict):
-                        flatten_dict(value, prefix=f"{prefix}{key}_")
-                    else:
-                        full_key = f"{prefix}{key}"
-                        video.metadata_propres[full_key] = str(value) if value is not None else ""
-
-            if 'video' in data:
-                flatten_dict(data['video'])
-            return True
-        except Exception as e:
-            print(f"❌ Erreur lecture JSON propres (extraction): {e}")
-            return False
-
-    def _charger_metadonnees_communes_json(self, video):
-        """Charge les métadonnées communes ('system', 'campaign') depuis le JSON."""
-        try:
-            json_path = Path(video.chemin).parent / f"{video.dossier_numero}.json"
-            if not json_path.exists(): return False
-
-            with open(json_path, 'r', encoding='utf-8') as f: data = json.load(f)
-            video.metadata_communes.clear()
-
-            def flatten_dict(d, p=''):
-                for k, v in d.items():
-                    if isinstance(v, dict): flatten_dict(v, f"{p}{k}_")
-                    else: video.metadata_communes[f"{p}{k}"] = str(v) if v is not None else ""
-            
-            if 'system' in data: flatten_dict(data['system'], "system_")
-            if 'campaign' in data: flatten_dict(data['campaign'], "campaign_")
-            return True
-        except Exception as e:
-            print(f"❌ Erreur lecture JSON communes (extraction): {e}")
-            return False
-
-    def _charger_donnees_timeseries_csv(self, video):
-        """Charge les données temporelles (temp, pression...) depuis le CSV."""
-        video.timeseries_data = [] # Réinitialiser les données
-        try:
-            csv_path = Path(video.chemin).parent / f"{video.dossier_numero}.csv"
-            if not csv_path.exists():
-                print(f"⚠️ Fichier CSV non trouvé pour la vidéo: {csv_path}")
-                self.view.video_player.set_timeseries_data([])
-                return False
-
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                # Détecter le délimiteur en lisant la première ligne
-                first_line = f.readline()
-                delimiter = ';' if ';' in first_line else ','
-                f.seek(0) # Revenir au début du fichier
-                reader = csv.DictReader(f, delimiter=delimiter)
-                
-                # --- NOUVELLE LOGIQUE DE SYNCHRONISATION BASÉE SUR HMS ---
-                
-                def hms_to_seconds(hms_str):
-                    """Convertit une chaîne 'HHhMMmSSs' en secondes totales."""
-                    try:
-                        parts = hms_str.lower().replace('s', '').split('h')
-                        h = int(parts[0])
-                        parts = parts[1].split('m')
-                        m = int(parts[0])
-                        s = int(parts[1])
-                        return h * 3600 + m * 60 + s
-                    except (ValueError, IndexError):
-                        return None
-
-                # Lire la première ligne de données pour obtenir l'heure de début
-                all_rows = list(reader)
-                if not all_rows:
-                    return False
-
-                start_hms_str = all_rows[0].get('HMS')
-                start_total_seconds = hms_to_seconds(start_hms_str)
-
-                if start_total_seconds is None:
-                    print("❌ Erreur: Impossible de lire l'heure de début (colonne HMS) dans le CSV.")
-                    return False
-
-                # Mapper les noms de colonnes possibles vers les noms standard
-                column_mapping = {
-                    'pression': 'Pression',
-                    'temperature': 'TempC',
-                    'lux': 'Lux'
-                }
-                
-                for row in all_rows:
-                    processed_row = {}
-                    current_hms_str = row.get('HMS')
-                    current_total_seconds = hms_to_seconds(current_hms_str)
-
-                    for standard_name, csv_name in column_mapping.items():
-                        if csv_name in row and row[csv_name] and row[csv_name].strip():
-                            value = row[csv_name].strip().replace(',', '.')
-                            processed_row[standard_name] = value
-                    
-                    if current_total_seconds is not None:
-                        delta_seconds = current_total_seconds - start_total_seconds
-                        processed_row['timestamp_ms'] = int(delta_seconds * 1000)
-                        video.timeseries_data.append(processed_row)
-
-            print(f"✅ Données CSV chargées pour {video.nom}: {len(video.timeseries_data)} points.")
-            return True
-        except Exception as e:
-            print(f"❌ Erreur lecture CSV (extraction): {e}")
-            return False
-
     def charger_video_dans_lecteur(self, video):
         """Prépare les données de la vidéo et met à jour le lecteur de la vue"""
         if not self.view:
             return
 
-        self._charger_metadonnees_propres_json(video)
-        self._charger_metadonnees_communes_json(video)
-        self._charger_donnees_timeseries_csv(video) 
+        # Utilisation des méthodes du modèle (Video) pour charger les données
+        video.charger_metadonnees_propres_json()
+        video.charger_metadonnees_communes_json()
+        video.charger_donnees_timeseries_csv()
         
 
         # Préparer les métadonnées STATIQUES pour l'affichage.
@@ -583,6 +368,11 @@ class ExtractionKosmosController(QObject):
             self.view.video_player.grab_frame(None)
         elif clicked_button == btn_crop:
             # Sélection d'une zone : on active le mode de recadrage
+            self.on_crop()
+
+    def on_crop(self):
+        """Active le mode de recadrage sur le lecteur vidéo."""
+        if self.view and hasattr(self.view, 'video_player'):
             self.view.show_message("Dessinez un rectangle sur la vidéo pour capturer une zone.", "info")
             self.view.video_player.start_cropping()
 
@@ -662,9 +452,6 @@ class ExtractionKosmosController(QObject):
         
         start_str = str(datetime.timedelta(milliseconds=start_ms))
 
-        # Commande FFmpeg :
-        # Input 0: Raw video from stdin (OpenCV)
-        # Input 1: Audio from source file (cut with -ss and -t)
         cmd = [
             'ffmpeg', '-y',
             '-loglevel', 'error', # Réduire la verbosité pour éviter le blocage du pipe stderr
@@ -833,7 +620,7 @@ class ExtractionKosmosController(QObject):
             self.view.show_message("La durée de la vidéo est inconnue.", "error")
             return
 
-        # 2. NOUVEAU : Demander à l'utilisateur de choisir la durée du short
+        # 2. Demander à l'utilisateur de choisir la durée du short
         durations = ["10 secondes", "20 secondes", "30 secondes"]
         selected_duration_str, ok = QInputDialog.getItem(
             self.view,
@@ -948,9 +735,6 @@ class ExtractionKosmosController(QObject):
                     temp_filtered_path.unlink()
                 except OSError: pass
 
-    def on_crop(self):
-        """Active l'outil de recadrage"""
-        print("✂️ Outil de recadrage activé")
 
     def _generer_miniature_video(self, chemin_video):
         """

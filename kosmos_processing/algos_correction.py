@@ -293,3 +293,111 @@ def annotate_detections(frame, detections, color=(0, 255, 0)):
   im3[:,:,ind] = im[:,:,ind]/A[0,ind] # im3 = im/A (voir formule)
 """
 # ils surviennent quand l'image brut ne contient quasiment pas de rouge. Ce n'est normalement pas bloquant.
+
+
+##############################################
+## Filtres rapides (Vectorisés)
+##############################################
+
+class UnderwaterFilters:
+    """
+    Collection de filtres rapides (vectorisés) pour améliorer des images sous-marines.
+    Les méthodes opèrent sur des frames BGR (numpy.ndarray uint8).
+    """
+
+    @staticmethod
+    def correct_blue_dominance(frame: np.ndarray, factor: float = 0.12) -> np.ndarray:
+        """
+        Réduit une dominante bleue en renforçant légèrement les canaux R et G.
+        :param factor: intensité de correction (0.12 => +12% sur R/G).
+        """
+        r, g, b = cv2.split(frame)
+        r = cv2.add(r, (r * factor).astype(np.uint8))
+        g = cv2.add(g, (g * factor).astype(np.uint8))
+        corrected = cv2.merge((r, g, b))
+        return np.clip(corrected, 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def apply_gamma(frame: np.ndarray, gamma: float = 1.2) -> np.ndarray:
+        """
+        Correction gamma via table de correspondance.
+        gamma > 1 éclaircit les tons moyens.
+        """
+        gamma = max(gamma, 0.01)
+        inv_gamma = 1.0 / gamma
+        table = np.array([(i / 255.0) ** inv_gamma * 255 for i in np.arange(256)]).astype("uint8")
+        return cv2.LUT(frame, table)
+
+    @staticmethod
+    def enhance_contrast(frame: np.ndarray, clip_limit: float = 2.0, tile_grid: tuple[int, int] = (8, 8)) -> np.ndarray:
+        """
+        Améliore le contraste local via CLAHE sur la luminance (Y dans YCrCb).
+        """
+        ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+        y, cr, cb = cv2.split(ycrcb)
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid)
+        y = clahe.apply(y)
+        merged = cv2.merge((y, cr, cb))
+        return cv2.cvtColor(merged, cv2.COLOR_YCrCb2BGR)
+
+    @staticmethod
+    def denoise(frame: np.ndarray, h: float = 10.0) -> np.ndarray:
+        """
+        Réduit le bruit dans l'image en utilisant la méthode fastNlMeansDenoisingColored de OpenCV.
+        """
+        return cv2.fastNlMeansDenoisingColored(frame, None, h, h, 7, 21)
+
+    @staticmethod
+    def sharpen(frame: np.ndarray) -> np.ndarray:
+        """Applique un filtre de netteté simple."""
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+        return cv2.filter2D(frame, -1, kernel)
+
+    @staticmethod
+    def apply_contrast_brightness(frame: np.ndarray, contrast: int, brightness: int) -> np.ndarray:
+        """Ajuste le contraste et la luminosité. contrast/brightness de -100 à 100."""
+        alpha = 1.0 + contrast / 100.0  # Facteur de contraste
+        beta = brightness  # Décalage de luminosité
+        adjusted = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
+        return adjusted
+
+    @staticmethod
+    def apply_saturation(frame: np.ndarray, value: int) -> np.ndarray:
+        """Ajuste la saturation. value de -100 à 100."""
+        if value == 0: return frame
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        factor = 1.0 + value / 100.0
+        s = np.clip(s * factor, 0, 255).astype(np.uint8)
+        hsv = cv2.merge([h, s, v])
+        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    @staticmethod
+    def apply_hue(frame: np.ndarray, value: int) -> np.ndarray:
+        """Ajuste la teinte. value de -90 à 90."""
+        if value == 0: return frame
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        # L'échelle de teinte dans OpenCV est 0-179
+        h = (h.astype(np.int32) + value) % 180
+        hsv = cv2.merge([h.astype(np.uint8), s, v])
+        return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    @staticmethod
+    def apply_temperature(frame: np.ndarray, value: int) -> np.ndarray:
+        """Ajuste la température de couleur. value de -100 (froid) à 100 (chaud)."""
+        if value == 0: return frame
+        # Convertir la valeur en un ajustement pour les canaux bleu et rouge
+        blue_factor = 1.0 - (value / 200.0 if value < 0 else 0)
+        red_factor = 1.0 + (value / 200.0 if value > 0 else 0)
+        b, g, r = cv2.split(frame)
+        b = np.clip(b * blue_factor, 0, 255).astype(np.uint8)
+        r = np.clip(r * red_factor, 0, 255).astype(np.uint8)
+        return cv2.merge([b, g, r])
+
+    @staticmethod
+    def apply_lut(frame: np.ndarray, lut: list) -> np.ndarray:
+        """Applique une table de correspondance (Look-Up Table)."""
+        if len(lut) != 256: return frame
+        table = np.array(lut, dtype=np.uint8)
+        return cv2.LUT(frame, table)
