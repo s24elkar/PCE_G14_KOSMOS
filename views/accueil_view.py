@@ -155,12 +155,13 @@ class NavBarAvecMenu(QWidget):
     ouvrir_campagne_clicked = pyqtSignal()
     enregistrer_clicked = pyqtSignal()
     enregistrer_sous_clicked = pyqtSignal()
+    telechargement_clicked = pyqtSignal()
     
     def __init__(self, tabs=None, default_tab=None, disable_tabs=False, parent=None):
         super().__init__(parent)
         
         if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"]
+            self.tabs = ["Fichier", "Tri", "Extraction", "IA"]
         else:
             self.tabs = tabs
             
@@ -313,6 +314,12 @@ class NavBarAvecMenu(QWidget):
         self.fichier_menu.addAction(action_ouvrir)
         
         self.fichier_menu.addSeparator()
+
+        action_telechargement = QAction("Téléchargement", self)
+        action_telechargement.triggered.connect(self.telechargement_clicked.emit)
+        self.fichier_menu.addAction(action_telechargement)
+
+        self.fichier_menu.addSeparator()
         
         action_enregistrer = QAction("Enregistrer", self)
         action_enregistrer.triggered.connect(self.enregistrer_clicked.emit)
@@ -430,7 +437,7 @@ class AccueilKosmosView(QWidget):
         main_layout.setSpacing(0)
         
         self.navbar = NavBarAvecMenu(
-            tabs=["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"],
+            tabs=["Fichier", "Tri", "Extraction", "IA"],
             default_tab="Fichier",
             disable_tabs=True
         )

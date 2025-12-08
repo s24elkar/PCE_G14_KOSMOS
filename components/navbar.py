@@ -29,7 +29,7 @@ class NavBar(QWidget):
 
         # Configuration des onglets
         if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"]
+            self.tabs = ["Fichier", "Tri", "Extraction", "IA"]
         else:
             self.tabs = tabs
             

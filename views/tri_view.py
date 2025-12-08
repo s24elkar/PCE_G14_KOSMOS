@@ -282,7 +282,7 @@ class NavBarAvecMenu(QWidget):
         super().__init__(parent)
         
         if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"]
+            self.tabs = ["Fichier", "Tri", "Extraction", "IA"]
         else:
             self.tabs = tabs
             
@@ -438,7 +438,7 @@ class TriKosmosView(QWidget):
         main_layout.setSpacing(0)
         
         self.navbar = NavBarAvecMenu(
-            tabs=["Fichier", "Tri", "Téléchargement", "IA", "Extraction", "Évènements"],
+            tabs=["Fichier", "Tri", "Extraction", "IA"],
             default_tab="Tri"
         )
         main_layout.addWidget(self.navbar)

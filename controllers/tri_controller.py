@@ -253,21 +253,37 @@ class TriKosmosController(QObject):
     def modifier_metadonnees_communes(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """
         Modifie les métadonnées communes (sections 'system' et 'campaign') dans le JSON.
+        PROPAGE les modifications à TOUTES les vidéos de la campagne.
         Retourne un tuple (succès, message_erreur).
         """
-        video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
-        if not video:
+        if not self.model.campagne_courante:
+             return False, "Aucune campagne ouverte."
+
+        # 1. Récupérer la vidéo source pour vérification
+        video_source = self.model.campagne_courante.obtenir_video(nom_video)
+        if not video_source:
             return False, "Vidéo introuvable."
 
-        # Mise à jour en mémoire
-        for key, value in metadonnees.items():
-            video.metadata_communes[key] = value
+        succes_global = True
+        nb_videos_maj = 0
+
+        # 2. Itérer sur TOUTES les vidéos de la campagne pour propager les changements
+        for video in self.model.campagne_courante.videos:
+            # Mise à jour en mémoire
+            for key, value in metadonnees.items():
+                video.metadata_communes[key] = value
+            
+            # Sauvegarde dans le JSON individuel
+            if not self.sauvegarder_metadonnees_communes_vers_json(video, nom_utilisateur):
+                succes_global = False
+                print(f"❌ Échec sauvegarde communes pour {video.nom}")
+            else:
+                nb_videos_maj += 1
         
-        # Sauvegarde dans le JSON
-        if self.sauvegarder_metadonnees_communes_vers_json(video, nom_utilisateur):
-            return True, "Sauvegarde réussie."
+        if succes_global:
+            return True, f"Sauvegarde réussie et propagée à {nb_videos_maj} vidéos."
         else:
-            return False, "Erreur lors de l'écriture du fichier JSON."
+            return False, f"Sauvegarde partielle ({nb_videos_maj} vidéos mises à jour). Vérifiez les logs."
 
 
     def sauvegarder_metadonnees_communes_vers_json(self, video, nom_utilisateur: str = "User") -> bool:

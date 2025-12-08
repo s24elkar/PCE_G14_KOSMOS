@@ -171,6 +171,9 @@ class KosmosApplication(QMainWindow):
                      self.tri_view, self.extraction_view, self.ia_view]:
             if view and hasattr(view, 'navbar'):
                 view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
+                # Connecter le signal de téléchargement si disponible (NavBarAvecMenu)
+                if hasattr(view.navbar, 'telechargement_clicked'):
+                    view.navbar.telechargement_clicked.connect(lambda: self.naviguer_vers('telechargement'))
         
         print("✅ Navigation connectée")
     
