@@ -209,6 +209,121 @@ class Video:
             print(f"❌ Erreur lecture CSV (model): {e}")
             return False
 
+    def sauvegarder_metadonnees_propres_json(self) -> bool:
+        """Sauvegarde les métadonnées propres dans le fichier JSON."""
+        try:
+            json_path = Path(self.chemin).parent / f"{self.dossier_numero}.json"
+            if not json_path.exists():
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            if 'video' not in data:
+                data['video'] = {}
+            
+            video_section = data['video']
+            
+            # Initialiser les sous-sections si besoin
+            sections = ['analyseDict', 'astroDict', 'ctdDict', 'gpsDict', 'hourDict', 'meteoAirDict', 'meteoMerDict', 'stationDict']
+            for section in sections:
+                if section not in video_section:
+                    video_section[section] = {}
+            
+            for key, value in self.metadata_propres.items():
+                if '_' in key:
+                    section_name, field_name = key.split('_', 1)
+                    if section_name in video_section:
+                        if value == "" or value == "None":
+                            video_section[section_name][field_name] = None
+                        else:
+                            # Tentative de conversion de type basique pour le JSON
+                            try:
+                                val_test = float(value)
+                                if val_test.is_integer():
+                                    video_section[section_name][field_name] = int(val_test)
+                                else:
+                                    video_section[section_name][field_name] = val_test
+                            except ValueError:
+                                video_section[section_name][field_name] = value
+                            except Exception:
+                                video_section[section_name][field_name] = value
+            
+            from tempfile import NamedTemporaryFile
+            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
+            try:
+                with tmp as tf:
+                    json.dump(data, tf, indent=4, ensure_ascii=False)
+                Path(tmp.name).replace(json_path)
+            finally:
+                try:
+                    Path(tmp.name).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            
+            return True
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde JSON propres (model): {e}")
+            return False
+
+    def sauvegarder_metadonnees_communes_json(self) -> bool:
+        """Sauvegarde les métadonnées communes dans le fichier JSON."""
+        try:
+            json_path = Path(self.chemin).parent / f"{self.dossier_numero}.json"
+            if not json_path.exists():
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 1. System
+            if 'system' not in data: data['system'] = {}
+            
+            # 2. Campaign
+            if 'campaign' not in data: data['campaign'] = {}
+            
+            for key, value in self.metadata_communes.items():
+                # Déterminer la section (system_ ou campaign_)
+                section = None
+                field = None
+                
+                if key.startswith("system_"):
+                    section = data['system']
+                    field = key.replace("system_", "")
+                elif key.startswith("campaign_"):
+                    section = data['campaign']
+                    field = key.replace("campaign_", "")
+                
+                if section is not None and field:
+                    if value == "" or value == "None":
+                        section[field] = None
+                    else:
+                        try:
+                            val_test = float(value)
+                            if val_test.is_integer():
+                                section[field] = int(val_test)
+                            else:
+                                section[field] = val_test
+                        except ValueError:
+                            section[field] = value
+            
+            from tempfile import NamedTemporaryFile
+            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
+            try:
+                with tmp as tf:
+                    json.dump(data, tf, indent=4, ensure_ascii=False)
+                Path(tmp.name).replace(json_path)
+            finally:
+                try:
+                    Path(tmp.name).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            
+            return True
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde JSON communes (model): {e}")
+            return False
+
 
 class Campagne:
     """
@@ -341,6 +456,33 @@ class ApplicationModel:
         self.video_selectionnee = None
         self.page_courante = "accueil"
     
+    def supprimer_fichier_video(self, nom_video: str) -> bool:
+        """
+        Supprime physiquement le fichier vidéo et le retire de la campagne.
+        """
+        if not self.campagne_courante:
+            return False
+            
+        video = self.campagne_courante.obtenir_video(nom_video)
+        if not video:
+            return False
+            
+        try:
+            chemin_fichier = Path(video.chemin)
+            if chemin_fichier.exists():
+                os.remove(chemin_fichier)
+                print(f"🗑️ Fichier supprimé : {chemin_fichier}")
+            
+            self.campagne_courante.supprimer_video(nom_video)
+            
+            if self.video_selectionnee and self.video_selectionnee.nom == nom_video:
+                self.video_selectionnee = None
+                
+            return True
+        except Exception as e:
+            print(f"❌ Erreur suppression fichier vidéo (model): {e}")
+            return False
+
     # ═══════════════════════════════════════════════════════════════
     # IMPORTATION DES VIDÉOS - STRUCTURE KOSMOS
     # ═══════════════════════════════════════════════════════════════

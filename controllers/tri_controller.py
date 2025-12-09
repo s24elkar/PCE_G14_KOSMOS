@@ -59,157 +59,21 @@ class TriKosmosController(QObject):
         return self.model.conserver_video(nom_video)
     
     def supprimer_video(self, nom_video: str) -> bool:
-        try:
-            video = self.model.campagne_courante.obtenir_video(nom_video) if self.model.campagne_courante else None
-            if not video: return False
-            chemin_fichier = Path(video.chemin)
-            if chemin_fichier.exists():
-                try:
-                    os.remove(chemin_fichier)
-                except Exception as e:
-                    print(f"❌ Erreur suppression fichier: {e}")
-                    return False
-            self.model.campagne_courante.supprimer_video(nom_video)
-            if self.model.video_selectionnee and self.model.video_selectionnee.nom == nom_video:
-                self.model.video_selectionnee = None
-            return True
-        except Exception as e:
-            print(f"❌ Erreur suppression vidéo: {e}")
-            return False
+        return self.model.supprimer_fichier_video(nom_video)
 
    
     def charger_metadonnees_depuis_json(self, video) -> bool:
         """Charge les métadonnées propres (section 'video' uniquement) depuis le JSON."""
-        try:
-            dossier = Path(video.chemin).parent
-            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
-            json_path = dossier / f"{dossier_numero}.json"
-            
-            if not json_path.exists():
-                return False
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            video.metadata_propres.clear()
-            
-            def flatten_dict(section_data, prefix=''):
-                for key, value in section_data.items():
-                    if isinstance(value, dict):
-                        flatten_dict(value, prefix=f"{prefix}{key}_")
-                    else:
-                        full_key = f"{prefix}{key}"
-                        video.metadata_propres[full_key] = str(value) if value is not None else ""
-
-            # Charger uniquement la section "video" ici (les autres vont dans 'communes')
-            if 'video' in data:
-                flatten_dict(data['video'])
-            
-            print(f"✅ Métadonnées propres (video) chargées: {len(video.metadata_propres)} champs")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur lecture JSON propres: {e}")
-            return False
+        return video.charger_metadonnees_propres_json()
 
     
     def charger_metadonnees_communes_depuis_json(self, video) -> bool:
         """Charge les métadonnées communes (sections 'system' et 'campaign') depuis le JSON."""
-        try:
-            dossier = Path(video.chemin).parent
-            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
-            json_path = dossier / f"{dossier_numero}.json"
-            
-            if not json_path.exists():
-                return False
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            video.metadata_communes.clear()
-            
-            def flatten_dict(section_data, prefix=''):
-                for key, value in section_data.items():
-                    if isinstance(value, dict):
-                        flatten_dict(value, prefix=f"{prefix}{key}_")
-                    else:
-                        full_key = f"{prefix}{key}"
-                        video.metadata_communes[full_key] = str(value) if value is not None else ""
-
-            # 1. Charger System
-            if 'system' in data:
-                flatten_dict(data['system'], prefix="system_")
-            
-            # 2. Charger Campaign
-            if 'campaign' in data:
-                flatten_dict(data['campaign'], prefix="campaign_")
-
-            print(f"✅ Métadonnées communes (system+campaign) chargées: {len(video.metadata_communes)} champs")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Erreur lecture JSON communes: {e}")
-            return False
+        return video.charger_metadonnees_communes_json()
 
     def sauvegarder_metadonnees_vers_json(self, video, nom_utilisateur: str = "User") -> bool:
         """Sauvegarde les métadonnées propres (section video) dans le JSON"""
-        try:
-            dossier = Path(video.chemin).parent
-            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
-            json_path = dossier / f"{dossier_numero}.json"
-            
-            if not json_path.exists():
-                return False
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            if 'video' not in data:
-                data['video'] = {}
-            
-            video_section = data['video']
-            
-            # Initialiser les sous-sections si besoin
-            sections = ['analyseDict', 'astroDict', 'ctdDict', 'gpsDict', 'hourDict', 'meteoAirDict', 'meteoMerDict', 'stationDict']
-            for section in sections:
-                if section not in video_section:
-                    video_section[section] = {}
-            
-            for key, value in video.metadata_propres.items():
-                if '_' in key:
-                    section_name, field_name = key.split('_', 1)
-                    if section_name in video_section:
-                        if value == "" or value == "None":
-                            video_section[section_name][field_name] = None
-                        else:
-                            # Tentative de conversion de type basique pour le JSON
-                            try:
-                                val_test = float(value)
-                                if val_test.is_integer():
-                                    video_section[section_name][field_name] = int(val_test)
-                                else:
-                                    video_section[section_name][field_name] = val_test
-                            except ValueError:
-                                video_section[section_name][field_name] = value
-                            except Exception:
-                                video_section[section_name][field_name] = value
-            
-            from tempfile import NamedTemporaryFile
-            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
-            try:
-                with tmp as tf:
-                    json.dump(data, tf, indent=4, ensure_ascii=False)
-                Path(tmp.name).replace(json_path)
-            finally:
-                try:
-                    Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
-            
-            return True
-        except Exception as e:
-            print(f"❌ Erreur sauvegarde JSON: {e}")
-            return False
+        return video.sauvegarder_metadonnees_propres_json()
 
     def modifier_metadonnees_propres(self, nom_video: str, metadonnees: dict, nom_utilisateur: str = "User"):
         """
@@ -288,70 +152,7 @@ class TriKosmosController(QObject):
 
     def sauvegarder_metadonnees_communes_vers_json(self, video, nom_utilisateur: str = "User") -> bool:
         """Sauvegarde les métadonnées communes (sections system et campaign) dans le JSON"""
-        try:
-            dossier = Path(video.chemin).parent
-            dossier_numero = getattr(video, "dossier_numero", None) or dossier.name
-            json_path = dossier / f"{dossier_numero}.json"
-            
-            if not json_path.exists():
-                return False
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Initialiser les sections si besoin
-            if 'system' not in data:
-                data['system'] = {}
-            if 'campaign' not in data:
-                data['campaign'] = {}
-            
-            # Fonction pour reconstruire la structure imbriquée
-            def set_nested_value(d, key_path, value):
-                """
-                Définit une valeur dans un dictionnaire imbriqué.
-                key_path format: "section_subsection_field" ou "section_field"
-                """
-                parts = key_path.split('_')
-                section = parts[0]  # 'system' ou 'campaign'
-                
-                if section not in d:
-                    d[section] = {}
-                
-                current = d[section]
-                for part in parts[1:-1]:  # Naviguer dans les sous-sections
-                    if part not in current:
-                        current[part] = {}
-                    current = current[part]
-                
-                # Définir la valeur finale
-                field_name = parts[-1]
-                if value == "" or value == "None":
-                    current[field_name] = None
-                else:
-                    current[field_name] = value
-            
-            # Appliquer toutes les modifications
-            for key, value in video.metadata_communes.items():
-                set_nested_value(data, key, value)
-            
-            # Sauvegarde atomique
-            from tempfile import NamedTemporaryFile
-            tmp = NamedTemporaryFile("w", delete=False, encoding="utf-8")
-            try:
-                with tmp as tf:
-                    json.dump(data, tf, indent=4, ensure_ascii=False)
-                Path(tmp.name).replace(json_path)
-            finally:
-                try:
-                    Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
-            
-            print(f"✅ Métadonnées communes sauvegardées dans: {json_path}")
-            return True
-        except Exception as e:
-            print(f"❌ Erreur sauvegarde communes JSON: {e}")
-            return False
+        return video.sauvegarder_metadonnees_communes_json()
     
     def get_video_by_name(self, nom_video: str):
         if not self.model.campagne_courante: return None
