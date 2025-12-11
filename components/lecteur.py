@@ -854,6 +854,46 @@ class VideoPlayer(QWidget):
                 self.show()
             self.is_fullscreen = False
             print("Retour au mode fenêtre normale")
+
+    # --- MÉTHODES DE CONTRÔLE DU LECTEUR (AJOUTÉES POUR MVC) ---
+
+    def load_video(self, video_path):
+        """Charge une vidéo dans le thread."""
+        self.video_thread.load_video(video_path)
+        self._player_initialized = True
+        self.controls.update_play_pause_button(True) # Met l'icône en pause (car ça joue auto)
+
+    def toggle_play_pause(self):
+        """Bascule entre lecture et pause."""
+        if not self._player_initialized:
+            return
+        
+        if self.video_thread.is_paused:
+            self.play()
+        else:
+            self.pause()
+        
+        self.play_pause_clicked.emit()
+
+    def play(self):
+        """Lance la lecture."""
+        if self._player_initialized:
+            self.video_thread.play()
+            self.controls.update_play_pause_button(True)
+
+    def pause(self):
+        """Met en pause."""
+        if self._player_initialized:
+            self.video_thread.pause()
+            self.controls.update_play_pause_button(False)
+
+    def on_speed_changed(self, speed):
+        """Change la vitesse de lecture."""
+        self.video_thread.set_speed(speed)
+
+    def on_detach_player(self):
+        """Demande le détachement du lecteur."""
+        self.detach_requested.emit()
     
     def keyPressEvent(self, event):
         """Gestion des touches clavier."""
@@ -875,78 +915,8 @@ class VideoPlayer(QWidget):
         else:
             super().keyPressEvent(event)
 
-    def update_timeseries_metadata(self, position_ms):
-        """Met à jour l'overlay avec les données du CSV en fonction du temps."""
-        dynamic_metadata = {}
-        if not self.timeseries_data:
-            pass # On continue même sans données CSV pour afficher les métadonnées statiques
-
-        # Recherche optimisée : on part de l'index précédent
-        for i in range(self.last_timeseries_index, len(self.timeseries_data)):
-            row = self.timeseries_data[i]
-            if row['timestamp_ms'] >= position_ms:
-                # On a trouvé la bonne ligne ou la première après la position
-                self.last_timeseries_index = i
-                
-                # Récupérer toutes les valeurs, avec une valeur par défaut si absente
-                dynamic_metadata['temp'] = f"{row.get('temperature', '--')}°C"
-                dynamic_metadata['pression'] = f"{row.get('pression', '--')} bar"
-                dynamic_metadata['lux'] = f"{row.get('lux', '--')}"
-                # On pourrait ajouter salinity et depth ici s'ils étaient dans le CSV
-                
-                break # On a trouvé la donnée pour ce timestamp, on sort de la boucle
-
-        # Calcul du temps formaté
-        seconds = position_ms // 1000
-        minutes = seconds // 60
-        hours = minutes // 60
-        time_str = f"{hours:02}:{minutes % 60:02}:{seconds % 60:02}"
-        dynamic_metadata['time'] = time_str
-
-        # Fusionner les métadonnées statiques et dynamiques
-        # Les données dynamiques (du CSV) écrasent les statiques si les clés sont identiques
-        final_metadata = {**self.static_metadata, **dynamic_metadata}
-
-        # Envoyer le tout au widget vidéo pour qu'il les dessine
-        self.video_widget.set_metadata(final_metadata)
-
-
-    def load_video(self, file_path, autoplay=False):
-        """Charge une vidéo avec OpenCV."""
-        self.video_thread.load_video(file_path)
-        self._player_initialized = True # On considère le lecteur comme initialisé
-        self.controls.update_play_pause_button(autoplay)
-        if autoplay:
-            self.video_thread.play()
-        else:
-            self.video_thread.pause()
-        self.video_thread.seek(0)
-        self.timeline.setValue(0)
-        print(f"📹 Vidéo chargée : {file_path}")
-        return True
-
-    def set_timeseries_data(self, data):
-        """Reçoit les données temporelles du contrôleur."""
-        self.timeseries_data = data
-        self.last_timeseries_index = 0 # Réinitialiser l'index de recherche
-        if data:
-            print(f"📊 Données temporelles reçues par le lecteur: {len(data)} points.")
-
-    def on_detach_player(self):
-        print("🗗 Détachement demandé")
-        self.detach_requested.emit()
-
-    def toggle_play_pause(self):
-        if self.controls.is_playing:
-            self.video_thread.play()
-        else:
-            self.video_thread.pause()
-        self.play_pause_clicked.emit()
-
-    def on_speed_changed(self, speed: float):
-        self.video_thread.set_speed(speed)
-
     def on_timeline_pressed(self):
+        """Appelé quand l'utilisateur clique sur la timeline."""
         if self._player_initialized:
             self.video_thread.pause()
 
@@ -1105,6 +1075,40 @@ class VideoPlayer(QWidget):
     def toggle_metadata_overlay(self, checked):
         """Affiche ou cache le panneau des métadonnées sur la vidéo."""
         self.video_widget.toggle_metadata(checked)
+
+    def set_timeseries_data(self, data):
+        """Définit les données temporelles (issues du CSV)."""
+        self.timeseries_data = data
+        self.last_timeseries_index = 0
+        print(f"📈 Données temporelles reçues : {len(data)} points")
+
+    def update_timeseries_metadata(self, position_ms):
+        """Met à jour les métadonnées affichées en fonction de la position temporelle."""
+        current_metadata = self.static_metadata.copy()
+        
+        if self.timeseries_data:
+            # Réinitialiser si on a reculé
+            if self.last_timeseries_index > 0 and self.last_timeseries_index < len(self.timeseries_data):
+                if self.timeseries_data[self.last_timeseries_index].get('timestamp_ms', 0) > position_ms:
+                    self.last_timeseries_index = 0
+            
+            # Avancer jusqu'au bon point
+            while self.last_timeseries_index < len(self.timeseries_data) - 1:
+                next_point = self.timeseries_data[self.last_timeseries_index + 1]
+                if next_point.get('timestamp_ms', 0) <= position_ms:
+                    self.last_timeseries_index += 1
+                else:
+                    break
+            
+            # Récupérer les données du point courant
+            if 0 <= self.last_timeseries_index < len(self.timeseries_data):
+                point = self.timeseries_data[self.last_timeseries_index]
+                # Mapper les clés pour l'affichage
+                if 'temperature' in point: current_metadata['temp'] = f"{point['temperature']}°C"
+                if 'pression' in point: current_metadata['pression'] = f"{point['pression']} Bar"
+                if 'lux' in point: current_metadata['lux'] = f"{point['lux']} Lux"
+
+        self.video_widget.set_metadata(current_metadata)
 
     def update_metadata(self, **kwargs):
         """Reçoit les métadonnées STATIQUES (du JSON) et les stocke."""

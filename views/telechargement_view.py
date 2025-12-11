@@ -137,12 +137,13 @@ class TelechargementKosmosView(QWidget):
         # Ligne 3 : Dossier local
         form_layout.addWidget(QLabel("Dossier local de destination"), 4, 0)
         dest_layout = QHBoxLayout()
-        self.label_dest = QLabel(self.destination)
-        self.label_dest.setStyleSheet("color: #9ad0ff;")
+        self.input_dest = QLineEdit(self.destination)
+        self.input_dest.setReadOnly(True)
+        
         btn_choose = QPushButton("Choisir...")
         btn_choose.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_choose.clicked.connect(self._choisir_destination)
-        dest_layout.addWidget(self.label_dest, stretch=1)
+        dest_layout.addWidget(self.input_dest, stretch=1)
         dest_layout.addWidget(btn_choose)
         form_layout.addLayout(dest_layout, 4, 1)
 
@@ -264,13 +265,28 @@ class TelechargementKosmosView(QWidget):
         )
         if dossier:
             self.destination = dossier
-            self.label_dest.setText(dossier)
+            self.input_dest.setText(dossier)
 
     def _set_actions_enabled(self, enabled: bool):
         self.btn_download.setEnabled(enabled)
         self.btn_delete.setEnabled(enabled)
 
     def _on_download_clicked(self):
+        # Demander le dossier de destination au moment du clic
+        dossier = QFileDialog.getExistingDirectory(
+            self,
+            "Choisir le dossier de destination",
+            self.destination,
+            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks,
+        )
+        
+        if dossier:
+            self.destination = dossier
+            self.input_dest.setText(dossier)
+        else:
+            # Si l'utilisateur annule la sélection, on annule le téléchargement
+            return
+
         params = self._collect_params()
         if not self._valider_params(params):
             return
