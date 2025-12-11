@@ -12,14 +12,13 @@ import numpy as np
 import subprocess
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication
 
 # Ajout du chemin racine pour les imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from kosmos_processing.algos_correction import UnderwaterFilters
+from models.app_model import UnderwaterFilters
 
 class ExtractionKosmosController(QObject):
     """
