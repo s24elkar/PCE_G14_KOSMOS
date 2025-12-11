@@ -2,9 +2,9 @@
 Composant Correction des Images
 Contrôles pour correction couleurs, contraste, luminosité et filtres avancés
 """
-from typing import Optional # AJOUT
+from typing import Optional 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
-                             QPushButton, QGroupBox, QGridLayout)
+                             QPushButton, QGroupBox, QGridLayout, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 
@@ -150,7 +150,6 @@ class ImageCorrection(QWidget):
     color_correction_clicked = pyqtSignal()
     contrast_changed = pyqtSignal(int)
     brightness_changed = pyqtSignal(int)
-    # NOUVEAUX SIGNAUX POUR LES FILTRES
     gamma_toggled = pyqtSignal(bool)
     contrast_clahe_toggled = pyqtSignal(bool)
     denoise_toggled = pyqtSignal(bool)
@@ -247,7 +246,7 @@ class ImageCorrection(QWidget):
         controls_layout.addWidget(color_filters_group)
 
         
-        # NOUVEAU : Groupe de boutons pour les filtres d'image avancés
+        # Groupe de boutons pour les filtres d'image avancés
         self.filters_groupbox = QGroupBox("Filtres avancés")
         self.filters_groupbox.setStyleSheet("""
             QGroupBox {
@@ -314,7 +313,32 @@ class ImageCorrection(QWidget):
         
         controls_container.setLayout(controls_layout)
         
-        main_layout.addWidget(controls_container)
+        # Création de la zone de défilement
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(controls_container)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: black;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #1a1a1a;
+                width: 10px;
+                margin: 0px 0px 0px 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+        
+        main_layout.addWidget(scroll_area)
         
         self.setLayout(main_layout)
         self.setStyleSheet("""

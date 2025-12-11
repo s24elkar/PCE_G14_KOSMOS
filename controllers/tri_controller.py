@@ -29,6 +29,8 @@ class TriKosmosController(QObject):
     
     navigation_demandee = pyqtSignal(str)
     video_selectionnee = pyqtSignal(object)
+    succes_operation = pyqtSignal(str) # Signal pour notifier le succès d'une opération
+    erreur_operation = pyqtSignal(str) # Signal pour notifier une erreur
     
     def __init__(self, model, parent=None):
         super().__init__(parent)
@@ -109,6 +111,7 @@ class TriKosmosController(QObject):
             video.metadata_propres[key] = value
         
         if self.sauvegarder_metadonnees_vers_json(video, nom_utilisateur):
+            self.succes_operation.emit("Les métadonnées ont été modifiées avec succès !")
             return True, "Sauvegarde réussie."
         else:
             return False, "Erreur lors de l'écriture du fichier JSON."
@@ -145,6 +148,7 @@ class TriKosmosController(QObject):
                 nb_videos_maj += 1
         
         if succes_global:
+            self.succes_operation.emit(f"Sauvegarde réussie et propagée à {nb_videos_maj} vidéos.")
             return True, f"Sauvegarde réussie et propagée à {nb_videos_maj} vidéos."
         else:
             return False, f"Sauvegarde partielle ({nb_videos_maj} vidéos mises à jour). Vérifiez les logs."
@@ -253,5 +257,6 @@ class TriKosmosController(QObject):
         return False
     
     def show_success_dialog(self, parent_view):
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(parent_view, "Succès", "Les métadonnées ont été modifiées avec succès !")
+        # Cette méthode ne devrait pas être ici, mais pour l'instant on la garde pour compatibilité
+        # Idéalement, le contrôleur devrait émettre un signal et la vue afficherait le dialogue
+        pass

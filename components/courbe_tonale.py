@@ -29,6 +29,7 @@ class InteractiveCurveWidget(QWidget):
         self.reset()
 
     def _get_graph_rect(self):
+        """Retourne le rectangle de dessin de la courbe."""
         return QRectF(
             self.margin_left,
             self.margin_top,
@@ -67,6 +68,7 @@ class InteractiveCurveWidget(QWidget):
         self.curve_changed.emit(lut.tolist())
 
     def paintEvent(self, event) -> None:
+        """Dessine la courbe tonale et les axes."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor("#182025"))
@@ -150,6 +152,7 @@ class InteractiveCurveWidget(QWidget):
                 painter.drawText(int(p.x()) + 10, int(p.y()) - 10, text)
 
     def mousePressEvent(self, event) -> None:
+        """Commence le déplacement d'un point si cliqué dessus."""
         if event.button() == Qt.MouseButton.LeftButton:
             for i, p in enumerate(self.points):
                 # Ne pas permettre de déplacer les points de fin horizontalement
@@ -163,6 +166,7 @@ class InteractiveCurveWidget(QWidget):
                     break
 
     def mouseMoveEvent(self, event) -> None:
+        """Déplace le point en cours de déplacement."""
         if self.dragging_point_index != -1:
             new_point = self._map_pos_to_point(event.pos())
             
@@ -176,6 +180,7 @@ class InteractiveCurveWidget(QWidget):
             self.update()
 
     def mouseReleaseEvent(self, event) -> None:
+        """Termine le déplacement du point."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.dragging_point_index = -1
             self.setCursor(Qt.CursorShape.ArrowCursor)

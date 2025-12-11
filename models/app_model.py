@@ -11,6 +11,61 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 
+# Constants for Metadata Labels
+METADATA_COMMUNES_LABELS = {
+    'system_camera': 'Caméra',
+    'system_model': 'Modèle',
+    'system_system': 'Système',
+    'system_version': 'Version',
+    'campaign_zoneDict_campaign': 'Campagne',
+    'campaign_zoneDict_zone': 'Zone',
+    'campaign_zoneDict_locality': 'Localité',
+    'campaign_zoneDict_protection': 'Protection',
+    'campaign_dateDict_date': 'Date',
+    'campaign_deploiementDict_boat': 'Bateau',
+    'campaign_deploiementDict_pilot': 'Pilote',
+    'campaign_deploiementDict_crew': 'Équipage',
+    'campaign_deploiementDict_partners': 'Partenaires'
+}
+
+METADATA_PROPRES_LABELS = {
+    # GPS
+    'latitude': 'Latitude (°)',
+    'longitude': 'Longitude (°)',
+    'site': 'Site',
+    # Météo Air
+    'tempAir': 'Temp. Air (°C)',
+    'wind': 'Vent (km/h)',
+    'sky': 'Ciel',
+    'atmPress': 'Pression (hPa)',
+    'direction': 'Dir. Vent',
+    # Météo Mer
+    'seaState': 'État Mer',
+    'swell': 'Houle (m)',
+    # Astro
+    'coefficient': 'Coeff. Marée',
+    'moon': 'Phase Lune',
+    'tide': 'Marée',
+    # CTD
+    'depth': 'Prof. (m)',
+    'salinity': 'Salinité (PSU)',
+    'temperature': 'Temp. Eau (°C)',
+    # Heure
+    'HMSOS': 'Heure Début',
+    'hour': 'Heure (h)',
+    'minute': 'Minute (m)',
+    'second': 'Seconde (s)',
+    'ymdOS': 'Date (YMD)',
+    # Station
+    'codestation': 'Code Station',
+    'increment': 'Incrément',
+    # Analyse
+    'exploitability': 'Exploitabilité',
+    'fauna': 'Faune',
+    'habitat': 'Habitat',
+    'visibility': 'Visibilité'
+}
+
 
 class Video:
     """
@@ -41,6 +96,35 @@ class Video:
         self.est_selectionnee = False
         self.est_conservee = True
         
+    def get_formatted_metadata_communes(self) -> Dict[str, Dict[str, str]]:
+        """Retourne les métadonnées communes organisées par section pour l'affichage."""
+        sections = {}
+        for key, value in self.metadata_communes.items():
+            if '_' in key:
+                section_name = key.split('_')[0]
+                if section_name not in sections: sections[section_name] = {}
+                sections[section_name][key] = value
+        return sections
+
+    def get_formatted_metadata_propres(self) -> Dict[str, Dict[str, tuple]]:
+        """Retourne les métadonnées propres organisées par section pour l'affichage."""
+        sections = {}
+        for full_key, value in self.metadata_propres.items():
+            if full_key.startswith('campaign_'):
+                continue
+            
+            if '_' in full_key:
+                section_name, field_name = full_key.split('_', 1)
+                
+                if section_name not in sections:
+                    sections[section_name] = {}
+                sections[section_name][field_name] = (full_key, value)
+            else:
+                if 'general' not in sections:
+                    sections['general'] = {}
+                sections['general'][full_key] = (full_key, value)
+        return sections
+
     def to_dict(self) -> Dict:
         """Convertit la vidéo en dictionnaire pour sauvegarde"""
         return {

@@ -100,11 +100,13 @@ class KosmosApplication(QMainWindow):
         # PAGE D'ACCUEIL
         self.accueil_controller = AccueilController(self.model)
         self.accueil_view = AccueilView(self.accueil_controller)
+        self.accueil_controller.set_view(self.accueil_view) # AJOUT: Lier la vue au contrôleur
         self.stack.addWidget(self.accueil_view)
         
         # PAGE D'IMPORTATION
         self.importation_controller = ImportationController(self.model)
         self.importation_view = ImportationView(self.importation_controller)
+        self.importation_controller.set_view(self.importation_view) # AJOUT: Lier la vue au contrôleur
         self.stack.addWidget(self.importation_view)
 
         # PAGE DE TÉLÉCHARGEMENT

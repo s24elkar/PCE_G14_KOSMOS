@@ -1,110 +1,103 @@
 """
 Composant NavBar réutilisable 
+Barre de navigation personnalisée avec onglets et contrôles de fenêtre
 """
 import sys
-from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QPalette, QColor, QFontDatabase
-
+from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout, QMenu
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+from PyQt6.QtGui import QFont, QPalette, QColor, QAction
 
 class NavBar(QWidget):
     """
-    Barre de navigation personnalisée avec contrôles de fenêtre
-    
-    Signaux:
-        tab_changed: Émis quand un onglet est sélectionné (str: nom de l'onglet)
+    Barre de navigation personnalisée avec menu déroulant sur "Fichier"
+    Gère les onglets, le drag & drop de la fenêtre et les contrôles (min/max/close)
     """
     
     tab_changed = pyqtSignal(str)
+    nouvelle_campagne_clicked = pyqtSignal()
+    ouvrir_campagne_clicked = pyqtSignal()
+    enregistrer_clicked = pyqtSignal()
+    enregistrer_sous_clicked = pyqtSignal()
+    telechargement_clicked = pyqtSignal()
     
-    def __init__(self, tabs=None, default_tab=None, parent=None):
-        """
-        Args:
-            tabs: Liste des noms d'onglets (par défaut: ["Fichier", "Tri", "IA", "Extraction", "Évènements"])
-            default_tab: Onglet actif par défaut (par défaut: premier onglet)
-            parent: Widget parent
-        """
+    def __init__(self, tabs=None, default_tab=None, disable_tabs=False, parent=None):
         super().__init__(parent)
-
-
-        # Configuration des onglets
+        
         if tabs is None:
             self.tabs = ["Fichier", "Tri", "Extraction", "IA"]
         else:
             self.tabs = tabs
             
-        # Rendre l'onglet Tri par défaut si aucun onglet précisé
-        if default_tab:
-            self.default_tab = default_tab
-        else:
-            self.default_tab = "Tri" if "Tri" in self.tabs else (self.tabs[0] if self.tabs else "")
-        
-        # Variables pour le drag & drop
+        self.default_tab = default_tab if default_tab else self.tabs[0]
+        self.disable_tabs = disable_tabs
         self.drag_position = None
-        
-        # Dictionnaire pour stocker les boutons
         self.tab_buttons = {}
         
         self.init_ui()
         
     def init_ui(self):
-        """Initialise l'interface utilisateur"""
-        # Layout principal horizontal
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(0)
         
-        # Créer les boutons de navigation
         for tab_name in self.tabs:
             is_active = (tab_name == self.default_tab)
             btn = self.create_nav_button(tab_name, is_active)
             self.tab_buttons[tab_name] = btn
             layout.addWidget(btn)
+            
+            if tab_name == "Fichier":
+                self.fichier_btn = btn
+                self.create_fichier_menu()
         
-        # Ajouter un stretch pour pousser les boutons de contrôle à droite
         layout.addStretch()
         
-        # Bouton de réduction
         minimize_btn = self.create_control_button("─", self.minimize_window, "#e0e0e0")
         layout.addWidget(minimize_btn)
         
-        # Bouton de maximisation/restauration
         self.maximize_btn = self.create_control_button("□", self.toggle_maximize, "#e0e0e0")
         layout.addWidget(self.maximize_btn)
         
-        # Bouton de fermeture
         close_btn = self.create_control_button("✕", self.close_window, "#ff4444")
         layout.addWidget(close_btn)
         
         self.setLayout(layout)
         
-        # Style de la barre de navigation - FOND BLANC
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+        
         self.setStyleSheet("""
-            QWidget {
+            NavBar {
                 background-color: white;
                 border-bottom: 1px solid #e0e0e0;
-                font-family: 'Montserrat';
+                font-family: 'Montserrat', 'Arial', sans-serif;
             }
         """)
         self.setFixedHeight(50)
     
     def create_nav_button(self, text, is_active=False):
-        """
-        Crée un bouton de navigation avec le style approprié
-        
-        Args:
-            text: Texte du bouton
-            is_active: Si le bouton est actif par défaut
-            
-        Returns:
-            QPushButton: Le bouton créé
-        """
+        """Crée un bouton de navigation"""
         btn = QPushButton(text)
         btn.setCheckable(True)
         btn.setChecked(is_active)
         
-        # Style pour les boutons
-        if is_active:
+        if self.disable_tabs and text != "Fichier":
+            btn.setEnabled(False)
+            style = """
+                QPushButton {
+                    background-color: transparent;
+                    color: #999;
+                    border: none;
+                    padding: 8px 20px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    margin: 0px 2px;
+                    border-radius: 4px;
+                }
+            """
+        elif is_active:
             style = """
                 QPushButton {
                     background-color: #1DA1FF;
@@ -142,27 +135,73 @@ class NavBar(QWidget):
             """
         
         btn.setStyleSheet(style)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.clicked.connect(lambda: self.on_tab_clicked(btn))
+        
+        if not (self.disable_tabs and text != "Fichier"):
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        if text != "Fichier":
+            btn.clicked.connect(lambda: self.on_tab_clicked(btn))
+        else:
+            btn.clicked.connect(self.show_fichier_menu)
         
         return btn
     
-    def create_control_button(self, text, callback, hover_color):
-        """
-        Crée un bouton de contrôle (minimiser, maximiser, fermer)
+    def create_fichier_menu(self):
+        """Crée le menu déroulant pour "Fichier" """
+        self.fichier_menu = QMenu(self)
+        self.fichier_menu.setStyleSheet("""
+            QMenu {
+                background-color: #f5f5f5;
+                border: 1px solid #ddd;
+                padding: 5px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                color: black;
+                padding: 8px 30px 8px 20px;
+                font-size: 13px;
+            }
+            QMenu::item:selected {
+                background-color: #2196F3;
+                color: white;
+            }
+        """)
         
-        Args:
-            text: Texte/icône du bouton
-            callback: Fonction à appeler au clic
-            hover_color: Couleur au survol
-            
-        Returns:
-            QPushButton: Le bouton créé
-        """
+        action_creer = QAction("Créer un repertoire de travail", self)
+        action_creer.triggered.connect(self.nouvelle_campagne_clicked.emit)
+        self.fichier_menu.addAction(action_creer)
+        
+        action_ouvrir = QAction("Ouvrir un repertoire de travail", self)
+        action_ouvrir.triggered.connect(self.ouvrir_campagne_clicked.emit)
+        self.fichier_menu.addAction(action_ouvrir)
+        
+        self.fichier_menu.addSeparator()
+
+        action_telechargement = QAction("Téléchargement", self)
+        action_telechargement.triggered.connect(self.telechargement_clicked.emit)
+        self.fichier_menu.addAction(action_telechargement)
+
+        self.fichier_menu.addSeparator()
+        
+        action_enregistrer = QAction("Enregistrer", self)
+        action_enregistrer.triggered.connect(self.enregistrer_clicked.emit)
+        self.fichier_menu.addAction(action_enregistrer)
+        
+        action_enregistrer_sous = QAction("Enregistrer sous", self)
+        action_enregistrer_sous.triggered.connect(self.enregistrer_sous_clicked.emit)
+        self.fichier_menu.addAction(action_enregistrer_sous)
+    
+    def show_fichier_menu(self):
+        """Affiche le menu déroulant "Fichier" """
+        button_pos = self.fichier_btn.mapToGlobal(QPoint(0, self.fichier_btn.height()))
+        self.fichier_menu.exec(button_pos)
+    
+    def create_control_button(self, text, callback, hover_color):
+        """Crée un bouton de contrôle"""
         btn = QPushButton(text)
         btn.setFixedSize(40, 40)
         
-        if hover_color == "#ff4444":  # Bouton fermer
+        if hover_color == "#ff4444":
             style = f"""
                 QPushButton {{
                     background-color: transparent;
@@ -197,83 +236,18 @@ class NavBar(QWidget):
         return btn
     
     def on_tab_clicked(self, clicked_btn):
-        """
-        Gère le clic sur un onglet
-        
-        Args:
-            clicked_btn: Le bouton cliqué
-        """
-        # Décocher tous les autres boutons
+        """Gère le clic sur un onglet"""
         for btn in self.tab_buttons.values():
             if btn != clicked_btn:
                 btn.setChecked(False)
-                btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: transparent;
-                        color: #333;
-                        border: none;
-                        padding: 8px 20px;
-                        font-size: 14px;
-                        font-weight: 500;
-                        margin: 0px 2px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #f5f5f5;
-                    }
-                    QPushButton:checked {
-                        background-color: #2196F3;
-                        color: white;
-                    }
-                """)
         
-        # Activer le bouton cliqué
         clicked_btn.setChecked(True)
-        clicked_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1DA1FF;
-                color: white;
-                border: none;
-                padding: 8px 20px;
-                font-size: 14px;
-                font-weight: 500;
-                margin: 0px 2px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #1E88E5;
-            }
-        """)
-        
-        # Émettre le signal avec le nom de l'onglet
         tab_name = clicked_btn.text()
         self.tab_changed.emit(tab_name)
-        print(f"Onglet sélectionné: {tab_name}")
     
-    def get_active_tab(self):
-        """
-        Retourne le nom de l'onglet actif
-        
-        Returns:
-            str: Nom de l'onglet actif
-        """
-        for name, btn in self.tab_buttons.items():
-            if btn.isChecked():
-                return name
-        return None
-    
-    def set_active_tab(self, tab_name):
-        """
-        Active un onglet spécifique
-        
-        Args:
-            tab_name: Nom de l'onglet à activer
-        """
-        if tab_name in self.tab_buttons:
-            self.on_tab_clicked(self.tab_buttons[tab_name])
     
     def mousePressEvent(self, event):
-        """Permet de déplacer la fenêtre en cliquant sur la navbar"""
+        """Permet de déplacer la fenêtre"""
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_position = event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
             event.accept()
@@ -289,11 +263,9 @@ class NavBar(QWidget):
         self.drag_position = None
     
     def minimize_window(self):
-        """Minimise la fenêtre"""
         self.window().showMinimized()
     
     def toggle_maximize(self):
-        """Bascule entre maximisé et restauré"""
         if self.window().isMaximized():
             self.window().showNormal()
             self.maximize_btn.setText("□")
@@ -302,69 +274,4 @@ class NavBar(QWidget):
             self.maximize_btn.setText("❐")
     
     def close_window(self):
-        """Ferme la fenêtre"""
         self.window().close()
-
-
-# Exemple d'utilisation
-if __name__ == '__main__':
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QLabel
-    
-    class MainWindow(QMainWindow):
-        def __init__(self):
-            super().__init__()
-            self.init_ui()
-            
-        def init_ui(self):
-            # Fenêtre sans bordures (frameless)
-            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-            self.setGeometry(100, 100, 1000, 700)
-            
-            # Widget central
-            central_widget = QWidget()
-            self.setCentralWidget(central_widget)
-            
-            # Layout principal
-            main_layout = QVBoxLayout()
-            main_layout.setContentsMargins(0, 0, 0, 0)
-            main_layout.setSpacing(0)
-            
-            # Ajouter la navbar personnalisée
-            # Vous pouvez personnaliser les onglets ici
-            self.navbar = NavBar(
-                tabs=["Fichier", "Tri", "IA", "Extraction", "Évènements"],
-                default_tab="Tri"
-            )
-            
-            # Connecter le signal pour réagir aux changements d'onglet
-            self.navbar.tab_changed.connect(self.on_tab_changed)
-            
-            main_layout.addWidget(self.navbar)
-            
-            # Zone de contenu
-            self.content_label = QLabel("Contenu de l'application - Onglet: Tri")
-            self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.content_label.setStyleSheet("""
-                font-size: 24px; 
-                color: #666; 
-                background-color: #f9f9f9;
-            """)
-            main_layout.addWidget(self.content_label)
-            
-            central_widget.setLayout(main_layout)
-        
-        def on_tab_changed(self, tab_name):
-            """Réagit au changement d'onglet"""
-            self.content_label.setText(f"Contenu de l'application - Onglet: {tab_name}")
-            # Ici vous pouvez charger différents widgets selon l'onglet sélectionné
-    
-    app = QApplication(sys.argv)
-    
-    # Configuration de la police par défaut
-    font = QFont("Montserrat", 10)
-    app.setFont(font)
-    
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec())

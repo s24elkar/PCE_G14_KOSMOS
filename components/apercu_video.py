@@ -1,240 +1,308 @@
-"""Aperçu des vidéos avec miniatures
-Affiche jusqu'à 6 vidéos avec possibilité de sélection, renommage et suppression."""
-
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QFileDialog, QMessageBox, QGridLayout)
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
-import os
 import sys
+import os
+import subprocess
+import time
+from pathlib import Path
+import cv2
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QFrame, QGridLayout, QSizePolicy
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
+from PyQt6.QtGui import QPixmap, QImage
 
-# from components.lecteur import VideoPlayer  # Décommenter si vous avez le lecteur
+# ═══════════════════════════════════════════════════════════════
+# WIDGET MINIATURE (Extrait de tri_view.py)
+# ═══════════════════════════════════════════════════════════════
 
+class AnimatedThumbnailLabel(QLabel):
+    """QLabel personnalisé qui gère l'affichage d'un Pixmap statique et le remplace par une lecture OpenCV lors du survol"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.static_pixmap = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: black; border: none; color: #888;")
+        self.setText("🔄")
+        
+        self.video_path = None
+        self.seek_time_sec = 0
+        self.duration_sec = 0
+        self.cap = None
+        self.playback_timer = QTimer(self)
+        self.playback_timer.timeout.connect(self.update_frame)
+        self.playback_start_time = 0
+        
+        self.setScaledContents(False) 
+    
+    def set_static_pixmap(self, pixmap):
+        """Définit l'image statique (miniature)"""
+        self.static_pixmap = pixmap
+        if not self.playback_timer.isActive():
+            self.setPixmap(self.static_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.setText("")
+    
+    def set_video_preview_info(self, video_path: str, seek_time_str: str, duration_sec: int):
+        """Stocke les informations pour la lecture OpenCV"""
+        self.video_path = video_path
+        self.duration_sec = duration_sec
+        
+        if video_path and seek_time_str:
+            try:
+                h, m, s = map(int, seek_time_str.split(':'))
+                self.seek_time_sec = h * 3600 + m * 60 + s
+            except Exception as e:
+                print(f"Erreur parsing seek time '{seek_time_str}': {e}")
+                self.seek_time_sec = 0
+        else:
+            self.seek_time_sec = 0
+
+    def enterEvent(self, event):
+        """Survol : démarre la lecture OpenCV"""
+        if self.video_path and not self.playback_timer.isActive():
+            try:
+                self.cap = cv2.VideoCapture(self.video_path)
+                if not self.cap.isOpened():
+                    print(f"Erreur ouverture vidéo: {self.video_path}")
+                    self.cap = None
+                    return
+                
+                self.cap.set(cv2.CAP_PROP_POS_MSEC, self.seek_time_sec * 1000)
+                self.playback_start_time = time.time()
+                self.playback_timer.start(33) 
+            except Exception as e:
+                print(f"Erreur démarrage OpenCV: {e}")
+                self.cap = None
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Sortie survol : arrête la lecture OpenCV et remet l'image statique"""
+        if self.playback_timer.isActive():
+            self.playback_timer.stop()
+        
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        
+        if self.static_pixmap:
+            self.setPixmap(self.static_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self.setPixmap(QPixmap())
+            self.setText("🔄")
+        
+        super().leaveEvent(event)
+
+    def update_frame(self):
+        """Slot pour le QTimer, lit et affiche une frame vidéo (MODIFIÉ POUR x2)"""
+        if not self.cap or not self.cap.isOpened():
+            self.leaveEvent(None) 
+            return
+
+        elapsed = time.time() - self.playback_start_time
+        if (elapsed * 2) > self.duration_sec:
+            self.leaveEvent(None) 
+            return
+
+        ret, _ = self.cap.read() 
+        if not ret:
+            self.leaveEvent(None) 
+            return
+        
+        ret, frame = self.cap.read() 
+        if not ret:
+            self.leaveEvent(None) 
+            return
+
+        try:
+            rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_image.shape
+            bytes_per_line = ch * w
+            
+            q_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            
+            self.setPixmap(pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        except Exception as e:
+            print(f"Erreur conversion frame: {e}")
+            self.leaveEvent(None) 
+            
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.static_pixmap and not self.playback_timer.isActive():
+            self.setPixmap(self.static_pixmap.scaled(event.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXTRACTION DE MINIATURES (THREAD - SIMPLIFIÉ)
+# ═══════════════════════════════════════════════════════════════
+
+class PreviewExtractorThread(QThread):
+    """Thread pour extraire une miniature STATIQUE"""
+    thumbnail_ready = pyqtSignal(int, QPixmap)
+    
+    def __init__(self, video_path, seek_info: list, parent=None):
+        super().__init__(parent)
+        self.video_path = video_path
+        self.seek_info = seek_info 
+        self.temp_dir = Path(video_path).parent / ".thumbnails"
+        self.temp_dir.mkdir(exist_ok=True)
+        self._is_running = True
+
+    def stop(self):
+        self._is_running = False
+
+    def run(self):
+        for idx, (seek_time, duration) in enumerate(self.seek_info):
+            if not self._is_running:
+                break
+            try:
+                safe_seek_time = seek_time.replace(':', '')
+                thumb_path = self.temp_dir / f"thumb_{Path(self.video_path).stem}_{idx}_{safe_seek_time}.jpg"
+                
+                pixmap = self.extract_thumbnail(seek_time, thumb_path)
+                if pixmap and self._is_running:
+                    self.thumbnail_ready.emit(idx, pixmap)
+                
+            except Exception as e:
+                print(f"⚠️ Erreur extraction preview {idx}: {e}")
+
+    def extract_thumbnail(self, seek_time, output_path):
+        if output_path.exists():
+            pixmap = QPixmap(str(output_path))
+            if not pixmap.isNull():
+                return pixmap
+        
+        cmd = ['ffmpeg', '-ss', seek_time, '-i', self.video_path, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '3', '-y', str(output_path)]
+        try:
+            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=5, text=True, encoding='utf-8')
+            if output_path.exists():
+                return QPixmap(str(output_path))
+        except FileNotFoundError:
+            print("❌ ffmpeg n'est pas trouvé")
+            self.stop()
+        except Exception as e:
+            print(f"Erreur extraction miniature: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# COMPOSANT PRINCIPAL
+# ═══════════════════════════════════════════════════════════════
 
 class ApercuVideos(QWidget):
     """
-    Composant d'aperçu des vidéos avec miniatures
-    Affiche jusqu'à 6 vidéos avec possibilité de sélection, renommage et suppression
+    Composant d'aperçu des vidéos avec miniatures animées au survol.
+    Remplace la partie droite de TriKosmosView.
     """
-    
-    # Signaux
-    videoSelectionnee = pyqtSignal(str)  # Émet le chemin de la vidéo
-    videoRenommee = pyqtSignal(str, str)  # Émet ancien_nom, nouveau_nom
-    videoSupprimee = pyqtSignal(str)  # Émet le chemin de la vidéo
-    
-    def __init__(self, dossier_videos: str = "", parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.dossier_videos = dossier_videos
-        self.videos = []
-        self.video_selectionnee = None
-
-        self.setWindowTitle("Aperçu des vidéos")
-        self.setStyleSheet("background-color: #111; color: white;")
-
-        # Layout principal
-        layout_principal = QVBoxLayout(self)
-
-        # Grille pour les 6 miniatures
-        self.grid = QGridLayout()
-        self.grid.setSpacing(10)
-        layout_principal.addLayout(self.grid)
-
-        # Boutons de gestion
-        boutons_layout = QHBoxLayout()
-        self.bouton_renommer = QPushButton("Renommer")
-        self.bouton_supprimer = QPushButton("Supprimer")
+        self.preview_extractor = None
+        self.thumbnails = []
+        self.thumbnail_labels = []
         
-        # Style des boutons
-        button_style = """
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-size: 13px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-        """
+        self.init_ui()
 
-        #Application du style
-        self.bouton_renommer.setStyleSheet(button_style)
-        self.bouton_supprimer.setStyleSheet(button_style.replace("#2196F3", "#f44336").replace("#1976D2", "#d32f2f").replace("#0D47A1", "#b71c1c"))
-
-        # Ajout des boutons au layout
-        boutons_layout.addWidget(self.bouton_renommer)
-        boutons_layout.addWidget(self.bouton_supprimer)
-        layout_principal.addLayout(boutons_layout)
-
-        # Connexions
-        self.bouton_renommer.clicked.connect(self.renommer_video)
-        self.bouton_supprimer.clicked.connect(self.supprimer_video)
-
-        # Chargement des miniatures si un dossier est fourni
-        if self.dossier_videos:
-            self.charger_videos()
-
-    def charger_videos(self):
-        """Charge les 6 premières vidéos trouvées dans le dossier."""
-        if not os.path.exists(self.dossier_videos):
-            print(f"⚠️ Le dossier {self.dossier_videos} n'existe pas")
-            return
-            
-        # Liste des fichiers vidéo
-        fichiers = [f for f in os.listdir(self.dossier_videos) if f.lower().endswith((".mp4", ".avi", ".mov", ".mkv"))]
-        fichiers = fichiers[:6]
-        self.videos = fichiers
-
-        # Nettoyer la grille
-        for i in reversed(range(self.grid.count())):
-            widget = self.grid.itemAt(i).widget()
-            if widget:
-                widget.deleteLater()
-
-        for i, fichier in enumerate(fichiers):
-            chemin = os.path.join(self.dossier_videos, fichier)
-
-            # Container pour miniature + nom
-            container = QWidget()
-            container_layout = QVBoxLayout()
-            container_layout.setContentsMargins(0, 0, 0, 0)
-            container_layout.setSpacing(5)
-
-            # Label pour l'image
-            label = QLabel()
-            
-            # Essayer de charger une vraie miniature ou utiliser un placeholder
-            pixmap = QPixmap(200, 120)
-            pixmap.fill(Qt.GlobalColor.darkGray)
-            label.setPixmap(pixmap)
-            label.setFixedSize(200, 120)
-            label.setStyleSheet("border: 2px solid gray; background-color: #333;")
-            label.setCursor(Qt.CursorShape.PointingHandCursor)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            # Stocker le chemin dans le label
-            label.setProperty("chemin", chemin)
-            label.mousePressEvent = lambda event, c=chemin: self.selectionner_video(c)
-
-            # Nom de la vidéo
-            nom_label = QLabel(fichier)
-            nom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            nom_label.setStyleSheet("color: white; font-size: 11px;")
-            nom_label.setWordWrap(True)
-
-            container_layout.addWidget(label)
-            container_layout.addWidget(nom_label)
-            container.setLayout(container_layout)
-
-            # Ajouter à la grille (2 lignes de 3 colonnes)
-            self.grid.addWidget(container, i // 3, i % 3)
-
-
-    def selectionner_video(self, chemin):
-        """Affiche la vidéo sélectionnée dans le lecteur."""
-        self.video_selectionnee = chemin
-        print(f"✅ Vidéo sélectionnée : {os.path.basename(chemin)}")
+    def init_ui(self):
+        # Container principal avec style
+        self.setStyleSheet("background-color: black; border: 2px solid white;")
         
-        # Si vous avez un lecteur vidéo
-        # self.lecteur.show()
-        # self.lecteur.charger_video(chemin)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         
-        self.highlight_selection(chemin)
-        self.videoSelectionnee.emit(chemin)
-
-
-    def highlight_selection(self, chemin_selectionne):
-        """Met en évidence la miniature sélectionnée."""
-        for i in range(self.grid.count()):
-            item = self.grid.itemAt(i)
-            if item:
-                container = item.widget()
-                if container:
-                    # Trouver le QLabel (image) dans le container
-                    label = container.findChild(QLabel)
-                    if label and label.property("chemin"):
-                        if label.property("chemin") == chemin_selectionne:
-                            label.setStyleSheet("border: 3px solid #1E90FF; background-color: #333;")
-                        else:
-                            label.setStyleSheet("border: 2px solid gray; background-color: #333;")
-
-
-    def renommer_video(self):
-        """Renomme la vidéo sélectionnée."""
-        if not self.video_selectionnee:
-            QMessageBox.warning(self, "Aucune sélection", "Veuillez d'abord sélectionner une vidéo.")
-            return
-
-        ancien_nom = os.path.basename(self.video_selectionnee)
-        nouveau_nom, ok = QFileDialog.getSaveFileName(
-            self, 
-            "Renommer la vidéo", 
-            self.video_selectionnee,
-            "Vidéos (*.mp4 *.avi *.mov *.mkv)"
-        )
+        # Titre
+        label_apercu = QLabel("Aperçu des vidéos")
+        label_apercu.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label_apercu.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px; border-bottom: 2px solid white; background-color: white; color: black;")
+        layout.addWidget(label_apercu)
         
-        if ok and nouveau_nom:
-            try:
-                os.rename(self.video_selectionnee, nouveau_nom)
-                QMessageBox.information(self, "Succès", "La vidéo a été renommée avec succès.")
-                self.videoRenommee.emit(ancien_nom, os.path.basename(nouveau_nom))
-                self.video_selectionnee = nouveau_nom
-                self.charger_videos()
-            except Exception as e:
-                QMessageBox.critical(self, "Erreur", f"Impossible de renommer la vidéo : {e}")
+        # Zone des miniatures
+        thumbnails_widget = QWidget()
+        thumbnails_widget.setStyleSheet("background-color: black; border: none;")
+        thumbnails_layout = QGridLayout()
+        thumbnails_layout.setSpacing(6)
+        thumbnails_layout.setContentsMargins(8, 8, 8, 8) 
+        
+        thumbnail_min_width = 300 
+        thumbnail_min_height = int(thumbnail_min_width / 1.87)
+        thumbnail_max_width = 550 
+        thumbnail_max_height = int(thumbnail_max_width / 1.87)
 
-    def supprimer_video(self):
-        """Demande confirmation avant de supprimer."""
-        if not self.video_selectionnee:
-            QMessageBox.warning(self, "Aucune sélection", "Veuillez d'abord sélectionner une vidéo.")
-            return
+        idx_counter = 1
+        for row in range(2):
+            for col in range(3):
+                thumb = AnimatedThumbnailLabel() 
+                thumb.setMinimumSize(thumbnail_min_width, thumbnail_min_height)
+                thumb.setMaximumSize(thumbnail_max_width, thumbnail_max_height)
+                thumb.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, 
+                    QSizePolicy.Policy.Expanding
+                )
+                self.thumbnails.append(thumb) 
 
-        reponse = QMessageBox.question(
-            self,
-            "Confirmation de suppression",
-            f"Êtes-vous sûr de vouloir supprimer la vidéo suivante ?\n\n{os.path.basename(self.video_selectionnee)}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+                label = QLabel(f"Angle de vue n°{idx_counter}")
+                label.setStyleSheet("color: #aaa; font-size: 10px; font-weight: bold;")
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.thumbnail_labels.append(label) 
 
-        if reponse == QMessageBox.StandardButton.Yes:
-            try:
-                nom_supprime = os.path.basename(self.video_selectionnee)
-                os.remove(self.video_selectionnee)
-                QMessageBox.information(self, "Supprimée", "La vidéo a été supprimée avec succès.")
-                self.videoSupprimee.emit(nom_supprime)
-                self.video_selectionnee = None
-                # self.lecteur.hide()  # Décommenter si vous avez le lecteur
-                self.charger_videos()
-            except Exception as e:
-                QMessageBox.critical(self, "Erreur", f"Impossible de supprimer la vidéo : {e}")
+                item_layout = QVBoxLayout()
+                item_layout.setContentsMargins(0, 0, 0, 0)
+                item_layout.setSpacing(4) 
+                
+                item_layout.addStretch() 
+                item_layout.addWidget(thumb, 1) 
+                item_layout.addWidget(label, 0) 
+                item_layout.addStretch() 
+                
+                item_widget = QWidget()
+                item_widget.setStyleSheet("background-color: transparent; border: none;")
+                item_widget.setLayout(item_layout)
+                
+                thumbnails_layout.addWidget(item_widget, row, col, Qt.AlignmentFlag.AlignCenter)
+                
+                idx_counter += 1
 
+        for i in range(2):
+            thumbnails_layout.setRowStretch(i, 1)
+        for i in range(3):
+            thumbnails_layout.setColumnStretch(i, 1)
+        
+        thumbnails_widget.setLayout(thumbnails_layout)
+        layout.addWidget(thumbnails_widget, 1)
 
-# --- Exemple d'utilisation (HORS de la classe, au niveau du module)
-if __name__ == '__main__':
-    from PyQt6.QtWidgets import QApplication, QMainWindow
+    def charger_previews(self, video_path, seek_info):
+        """Lance l'extraction et l'affichage des miniatures pour une vidéo donnée"""
+        # Arrêter le thread précédent s'il existe
+        if self.preview_extractor and self.preview_extractor.isRunning():
+            self.preview_extractor.stop()
+            self.preview_extractor.wait()
+        
+        # Réinitialiser les miniatures
+        for thumb in self.thumbnails:
+            thumb.setText("🔄")
+            thumb.setPixmap(QPixmap())
+            thumb.set_video_preview_info(None, "00:00:00", 0)
+            thumb.static_pixmap = None
 
-    app = QApplication(sys.argv)
-    
-    window = QMainWindow()
-    window.setGeometry(100, 100, 900, 600)
-    window.setWindowTitle("Test - Aperçu des vidéos")
-    window.setStyleSheet("background-color: #2a2a2a;")
-    
-    # Création du composant d'aperçu (avec un dossier de test)
-    # Remplacez par un vrai chemin de dossier contenant des vidéos
-    apercu = ApercuVideos(dossier_videos="./videos")  # ou "" pour un dossier vide
-    
-    # Exemple : connexion des signaux pour tests
-    apercu.videoSelectionnee.connect(lambda chemin: print(f"🎥 Vidéo sélectionnée : {os.path.basename(chemin)}"))
-    apercu.videoRenommee.connect(lambda ancien, nouveau: print(f"✏️ {ancien} renommée en {nouveau}"))
-    apercu.videoSupprimee.connect(lambda nom: print(f"🗑️ Vidéo supprimée : {nom}"))
-    
-    window.setCentralWidget(apercu)
-    window.show()
-    
-    sys.exit(app.exec())
+        # Configurer les infos de survol pour chaque miniature
+        for idx, thumb in enumerate(self.thumbnails):
+            if idx < len(seek_info):
+                seek_time_str, duration = seek_info[idx]
+                thumb.set_video_preview_info(video_path, seek_time_str, duration)
+            else:
+                thumb.set_video_preview_info(None, "00:00:00", 0)
+
+        print(f"🎬 Lancement extraction previews...")
+        
+        # Lancer le thread d'extraction
+        self.preview_extractor = PreviewExtractorThread(video_path, seek_info)
+        self.preview_extractor.thumbnail_ready.connect(self.afficher_miniature)
+        self.preview_extractor.start()
+
+    def afficher_miniature(self, index, pixmap):
+        """Slot appelé quand une miniature est prête"""
+        if index < len(self.thumbnails):
+            if self.thumbnails[index].size().isValid():
+                self.thumbnails[index].set_static_pixmap(pixmap)
+            else:
+                self.thumbnails[index].static_pixmap = pixmap
+                self.thumbnails[index].setText("") 
+            print(f"✅ Miniature statique {index+1} affichée")

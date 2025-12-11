@@ -12,7 +12,7 @@ import numpy as np
 import subprocess
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QInputDialog, QApplication
+from PyQt6.QtWidgets import QApplication
 
 # Ajout du chemin racine pour les imports
 project_root = Path(__file__).parent.parent
@@ -42,12 +42,7 @@ class ExtractionKosmosController(QObject):
     def set_view(self, view):
         """Associe la vue à ce contrôleur"""
         self.view = view
-        self.detached_window = None
         
-        # Connecter tous les signaux de la vue ici
-        if self.view and hasattr(self.view, 'video_player'):
-            self.view.video_player.detach_requested.connect(self.on_detach_player)
-            
         # Afficher la première vidéo conservée au lancement de la page Extraction
         if self.view and hasattr(self.view, 'view_shown'):
             self.view.view_shown.connect(self.load_first_video)
@@ -155,55 +150,6 @@ class ExtractionKosmosController(QObject):
     # ═══════════════════════════════════════════════════════════════
     # CONTRÔLE DU LECTEUR
     # ═══════════════════════════════════════════════════════════════
-
-    def on_detach_player(self):
-        """Détache le lecteur dans une nouvelle fenêtre"""
-        if not self.view or not hasattr(self.view, 'video_player'):
-            return
-        
-        # Importer la fenêtre détachée
-        from components.detached_player import DetachedPlayerWindow
-        
-        # Sauvegarder la référence au layout parent
-        if not hasattr(self, 'video_player_parent_layout'):
-            # Trouver le parent layout (normalement center_right_layout)
-            self.video_player_parent_layout = self.view.video_player.parent().layout()
-            self.video_player_parent_index = self.video_player_parent_layout.indexOf(self.view.video_player)
-        
-        # Retirer le lecteur de la vue principale
-        video_player = self.view.video_player
-        self.video_player_parent_layout.removeWidget(video_player)
-        video_player.setParent(None)
-        
-        # Créer la fenêtre détachée
-        self.detached_window = DetachedPlayerWindow(video_player, parent=None)
-        self.detached_window.closed.connect(self.on_reattach_player)
-        self.detached_window.show()
-        
-        print("🗗 Lecteur détaché dans une nouvelle fenêtre")
-
-    def on_reattach_player(self):
-        """Réattache le lecteur à la vue principale"""
-        if not self.detached_window or not self.view:
-            return
-        
-        # Récupérer le lecteur
-        video_player = self.detached_window.video_player
-        video_player.setParent(self.view)
-        
-        # Réinsérer dans le layout à la bonne position
-        if hasattr(self, 'video_player_parent_layout') and hasattr(self, 'video_player_parent_index'):
-            self.video_player_parent_layout.insertWidget(
-                self.video_player_parent_index, 
-                video_player, 
-                stretch=5
-            )
-        
-        # Nettoyer
-        self.detached_window.deleteLater()
-        self.detached_window = None
-        
-        print("🔗 Lecteur réattaché à la vue principale")
         
     def on_play_pause(self):
         """Gère le bouton Play/Pause"""
@@ -339,7 +285,6 @@ class ExtractionKosmosController(QObject):
     # ═══════════════════════════════════════════════════════════════
 
     def on_screenshot(self):
-        from PyQt6.QtWidgets import QMessageBox
         """Active le mode de sélection sur le lecteur vidéo pour une capture d'écran."""
         if not self.model.video_selectionnee:
             self.view.show_message("Aucune vidéo sélectionnée.", "warning")
@@ -348,26 +293,14 @@ class ExtractionKosmosController(QObject):
         if not self.view or not hasattr(self.view, 'video_player'):
             return
             
-        # Créer une boîte de dialogue pour demander le type de capture
-        msg_box = QMessageBox(self.view)
-        msg_box.setWindowTitle("Type de capture")
-        msg_box.setText("Quel type de capture d'écran souhaitez-vous effectuer ?")
-        msg_box.setIcon(QMessageBox.Icon.Question)
+        # Demander le type de capture à la vue
+        capture_type = self.view.ask_screenshot_type()
         
-        # Ajouter les boutons personnalisés
-        btn_full = msg_box.addButton("Image complète", QMessageBox.ButtonRole.YesRole)
-        btn_crop = msg_box.addButton("Sélectionner une zone", QMessageBox.ButtonRole.NoRole)
-        msg_box.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
-        
-        msg_box.exec()
-        
-        clicked_button = msg_box.clickedButton()
-        
-        if clicked_button == btn_full:
-            # Capture de l'image complète : on appelle directement grab_frame sans rectangle
+        if capture_type == "full":
+            # Capture de l'image complète
             self.view.video_player.grab_frame(None)
-        elif clicked_button == btn_crop:
-            # Sélection d'une zone : on active le mode de recadrage
+        elif capture_type == "crop":
+            # Sélection d'une zone
             self.on_crop()
 
     def on_crop(self):
@@ -390,14 +323,10 @@ class ExtractionKosmosController(QObject):
             self.view.show_message("Impossible de capturer l'image de la vidéo.", "error")
             return
 
-        # 1. Demander le nom de la capture maintenant, après la sélection.
-        capture_name, ok_pressed = QInputDialog.getText(
-            self.view,
-            "Nommer la capture",
-            "Entrez le nom de la capture (sans extension) :",
-        )
+        # 1. Demander le nom de la capture à la vue
+        capture_name = self.view.ask_capture_name()
 
-        if not ok_pressed or not capture_name:
+        if not capture_name:
             self.view.show_message("Capture annulée.", "info")
             return
 
@@ -559,24 +488,20 @@ class ExtractionKosmosController(QObject):
         initial_start_ms = current_pos_ms
         initial_end_ms = min(duration_ms, current_pos_ms + 30000)
 
-        # 2. Ouvrir la nouvelle fenêtre d'édition
-        from components.clip_editor_dialog import ClipEditorDialog
-        dialog = ClipEditorDialog(
+        # 2. Ouvrir la fenêtre d'édition via la vue
+        result = self.view.open_clip_editor(
             self.model.video_selectionnee.chemin,
             initial_start_ms,
-            initial_end_ms,
-            self.view
+            initial_end_ms
         )
-        
-        accepted = dialog.exec()
 
         # 3. Si l'utilisateur a validé, créer l'extrait final
-        if not accepted:
+        if not result:
             self.view.show_message("Enregistrement annulé.", "info")
             return
 
         try:
-            rec_name, final_start_ms, final_end_ms = dialog.get_values()
+            rec_name, final_start_ms, final_end_ms = result
             
             final_start_str = str(datetime.timedelta(milliseconds=final_start_ms))
             final_duration_s = (final_end_ms - final_start_ms) / 1000
@@ -620,18 +545,11 @@ class ExtractionKosmosController(QObject):
             self.view.show_message("La durée de la vidéo est inconnue.", "error")
             return
 
-        # 2. Demander à l'utilisateur de choisir la durée du short
+        # 2. Demander à l'utilisateur de choisir la durée du short via la vue
         durations = ["10 secondes", "20 secondes", "30 secondes"]
-        selected_duration_str, ok = QInputDialog.getItem(
-            self.view,
-            "Choisir la durée du Short",
-            "Quelle durée pour votre short ?",
-            durations,
-            0,  # index par défaut
-            False # non-éditable
-        )
+        selected_duration_str = self.view.ask_short_duration(durations)
 
-        if not ok:
+        if not selected_duration_str:
             self.view.show_message("Création du short annulée.", "info")
             return
 
@@ -690,17 +608,12 @@ class ExtractionKosmosController(QObject):
             if temp_filtered_path.exists(): temp_filtered_path.unlink()
             return
 
-        # 5. Afficher la boîte de dialogue d'aperçu
-        from components.short_preview_dialog import ShortPreviewDialog
-        preview_dialog = ShortPreviewDialog(str(temp_preview_path), self.view)
-        
-        accepted = preview_dialog.exec()
+        # 5. Afficher la boîte de dialogue d'aperçu via la vue
+        short_name = self.view.open_short_preview(str(temp_preview_path))
 
         try:
             # 6. Si l'utilisateur a cliqué sur "Enregistrer" et entré un nom
-            if accepted:
-                short_name = preview_dialog.get_short_name()
-
+            if short_name:
                 try:
                     if not short_name:
                         self.view.show_message("Enregistrement annulé : nom vide.", "warning")

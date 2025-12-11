@@ -15,11 +15,12 @@ class ClipEditorDialog(QDialog):
     Dialogue qui affiche la vidéo complète et permet de sélectionner
     une plage avec des poignées sur la timeline.
     """
-    def __init__(self, video_path, initial_start_ms, initial_end_ms, parent=None):
+    def __init__(self, video_path, initial_start_ms, initial_end_ms, filters=None, parent=None):
         super().__init__(parent)
         self.video_path = video_path
         self.initial_start_ms = initial_start_ms
         self.initial_end_ms = initial_end_ms
+        self.filters = filters or {}
 
         self.setWindowTitle("Éditeur d'Extrait Vidéo")
         self.setMinimumSize(800, 600)
@@ -28,11 +29,17 @@ class ClipEditorDialog(QDialog):
         self.init_ui()
 
         if not self.video_path:
-            QMessageBox.critical(self, "Erreur", "Aucun chemin de vidÃ©o fourni.")
+            QMessageBox.critical(self, "Erreur", "Aucun chemin de vidéo fourni.")
             self.reject()
         else:
+            # Appliquer les filtres
+            if self.filters:
+                for name, (func, kwargs) in self.filters.items():
+                    self.video_player.toggle_filter(name, func, True, **kwargs)
+
             # On charge la vidéo en demandant de ne pas la mettre en pause
-            self.video_player.load_video(self.video_path, autoplay=False)
+            self.video_player.load_video(self.video_path)
+            self.video_player.pause()
             # On connecte le signal duration_changed du thread vidéo.
             self.video_player.video_thread.duration_changed.connect(self.setup_selection_handles)
             # On connecte position_changed pour forcer la boucle dans la sélection.
@@ -70,7 +77,7 @@ class ClipEditorDialog(QDialog):
 
         # Affichage des temps de début et de fin
         time_display_layout = QHBoxLayout()
-        time_display_layout.addWidget(QLabel("DÃ©but :"))
+        time_display_layout.addWidget(QLabel("Début :"))
         self.start_time_label = QLabel("00:00.000")
         self.start_time_label.setStyleSheet("font-weight: bold; color: #2196F3;")
         time_display_layout.addWidget(self.start_time_label)

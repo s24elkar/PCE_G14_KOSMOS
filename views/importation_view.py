@@ -18,159 +18,14 @@ from PyQt6.QtGui import QFont, QAction, QPalette, QColor
 
 # Import du contrôleur
 from controllers.importation_controller import ImportationKosmosController
+from components.navbar import NavBar
 
 
 # ═══════════════════════════════════════════════════════════════
 # NAVBAR AVEC MENU FICHIER
 # ═══════════════════════════════════════════════════════════════
+# (Déplacé dans components/navbar.py)
 
-class NavBarAvecMenu(QWidget):
-    tab_changed = pyqtSignal(str)
-    nouvelle_campagne_clicked = pyqtSignal()
-    ouvrir_campagne_clicked = pyqtSignal()
-    enregistrer_clicked = pyqtSignal()
-    enregistrer_sous_clicked = pyqtSignal()
-    
-    def __init__(self, tabs=None, default_tab=None, parent=None):
-        super().__init__(parent)
-        
-        if tabs is None:
-            self.tabs = ["Fichier", "Tri", "Extraction", "IA"]
-        else:
-            self.tabs = tabs
-            
-        self.default_tab = default_tab if default_tab else self.tabs[0]
-        self.drag_position = None
-        self.tab_buttons = {}
-        
-        self.init_ui()
-        
-    def init_ui(self):
-        layout = QHBoxLayout()
-        layout.setContentsMargins(10, 0, 10, 0)
-        layout.setSpacing(0)
-        
-        for tab_name in self.tabs:
-            is_active = (tab_name == self.default_tab)
-            btn = self.create_nav_button(tab_name, is_active)
-            self.tab_buttons[tab_name] = btn
-            layout.addWidget(btn)
-            
-            if tab_name == "Fichier":
-                self.fichier_btn = btn
-                self.create_fichier_menu()
-        
-        layout.addStretch()
-        
-        minimize_btn = self.create_control_button("─", self.minimize_window, "#e0e0e0")
-        layout.addWidget(minimize_btn)
-        
-        self.maximize_btn = self.create_control_button("□", self.toggle_maximize, "#e0e0e0")
-        layout.addWidget(self.maximize_btn)
-        
-        close_btn = self.create_control_button("✕", self.close_window, "#ff4444")
-        layout.addWidget(close_btn)
-        
-        self.setLayout(layout)
-        
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
-        self.setPalette(palette)
-        self.setAutoFillBackground(True)
-        
-        self.setStyleSheet("""
-            NavBarAvecMenu {
-                background-color: rgb(255, 255, 255);
-                border-bottom: 1px solid #e0e0e0;
-            }
-        """)
-        
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setFixedHeight(50)
-    
-    def create_nav_button(self, text, is_active=False):
-        btn = QPushButton(text)
-        btn.setCheckable(True)
-        btn.setChecked(is_active)
-        
-        if is_active:
-            style = "QPushButton { background-color: #1DA1FF; color: white; border: none; padding: 8px 20px; font-size: 14px; border-radius: 4px; }"
-        else:
-            style = "QPushButton { background-color: transparent; color: black; border: none; padding: 8px 20px; font-size: 14px; border-radius: 4px; } QPushButton:hover { background-color: #f5f5f5; }"
-        
-        btn.setStyleSheet(style)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        if text != "Fichier":
-            btn.clicked.connect(lambda: self.on_tab_clicked(btn))
-        else:
-            btn.clicked.connect(self.show_fichier_menu)
-        
-        return btn
-    
-    def create_fichier_menu(self):
-        self.fichier_menu = QMenu(self)
-        self.fichier_menu.setStyleSheet("QMenu { background-color: #f5f5f5; border: 1px solid #ddd; padding: 5px; } QMenu::item { padding: 8px 30px 8px 20px; } QMenu::item:selected { background-color: #2196F3; color: white; }")
-        
-        action_creer = QAction("Créer campagne", self)
-        action_creer.triggered.connect(self.nouvelle_campagne_clicked.emit)
-        self.fichier_menu.addAction(action_creer)
-        
-        action_ouvrir = QAction("Ouvrir campagne", self)
-        action_ouvrir.triggered.connect(self.ouvrir_campagne_clicked.emit)
-        self.fichier_menu.addAction(action_ouvrir)
-        
-        self.fichier_menu.addSeparator()
-        
-        action_enregistrer = QAction("Enregistrer", self)
-        action_enregistrer.triggered.connect(self.enregistrer_clicked.emit)
-        self.fichier_menu.addAction(action_enregistrer)
-    
-    def show_fichier_menu(self):
-        button_pos = self.fichier_btn.mapToGlobal(QPoint(0, self.fichier_btn.height()))
-        self.fichier_menu.exec(button_pos)
-    
-    def create_control_button(self, text, callback, hover_color):
-        btn = QPushButton(text)
-        btn.setFixedSize(40, 40)
-        btn.setStyleSheet(f"QPushButton {{ background-color: transparent; border: none; color: #333; }} QPushButton:hover {{ background-color: {hover_color}; }}")
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.clicked.connect(callback)
-        return btn
-    
-    def on_tab_clicked(self, clicked_btn):
-        for btn in self.tab_buttons.values():
-            if btn != clicked_btn:
-                btn.setChecked(False)
-        clicked_btn.setChecked(True)
-        self.tab_changed.emit(clicked_btn.text())
-    
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
-            event.accept()
-    
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton and self.drag_position:
-            self.window().move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
-    
-    def mouseReleaseEvent(self, event):
-        self.drag_position = None
-    
-    def minimize_window(self):
-        self.window().showMinimized()
-    
-    def toggle_maximize(self):
-        if self.window().isMaximized():
-            self.window().showNormal()
-            self.maximize_btn.setText("□")
-        else:
-            self.window().showMaximized()
-            self.maximize_btn.setText("❐")
-    
-    def close_window(self):
-        self.window().close()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -196,7 +51,7 @@ class ImportationKosmosView(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        self.navbar = NavBarAvecMenu(
+        self.navbar = NavBar(
             tabs=["Fichier", "Tri", "Extraction", "IA"],
             default_tab="Fichier"
         )
@@ -312,9 +167,35 @@ class ImportationKosmosView(QWidget):
             
             # Lancer l'importation
             if self.controller:
-                self.controller.on_importer_dossier(dossier, self)
+                self.controller.on_importer_dossier(dossier)
         else:
             self.info_label.setText("Aucun dossier sélectionné")
+
+    # ═══════════════════════════════════════════════════════════════
+    # MÉTHODES UI (Appelées par le contrôleur)
+    # ═══════════════════════════════════════════════════════════════
+
+    def show_warning(self, title, message):
+        """Affiche une boîte de dialogue d'avertissement"""
+        QMessageBox.warning(self, title, message)
+
+    def show_error(self, title, message):
+        """Affiche une boîte de dialogue d'erreur"""
+        QMessageBox.critical(self, title, message)
+
+    def show_info(self, title, message):
+        """Affiche une boîte de dialogue d'information"""
+        QMessageBox.information(self, title, message)
+
+    def ask_confirmation(self, title, message):
+        """Demande une confirmation à l'utilisateur"""
+        reponse = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        return reponse == QMessageBox.StandardButton.Yes
 
 
 if __name__ == '__main__':

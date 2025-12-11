@@ -167,7 +167,7 @@ class MediaExplorer(QWidget):
         # Container pour les miniatures
         self.content_widget = QWidget()
         
-        # CHANGEMENT: Utiliser QGridLayout au lieu de QVBoxLayout pour avoir 2 colonnes
+        
         self.content_layout = QGridLayout()
         self.content_layout.setContentsMargins(5, 15, 5, 15)  # marges haut/bas augmentées
         self.content_layout.setHorizontalSpacing(8)

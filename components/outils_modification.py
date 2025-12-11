@@ -100,11 +100,6 @@ class ExtractionTools(QWidget):
         self.short_btn.clicked.connect(self.short_clicked.emit)
         buttons_layout.addWidget(self.short_btn)
         
-        # Bouton Recadrer
-        self.crop_btn = ExtractionButton("⛶", "Recadrer")
-        self.crop_btn.clicked.connect(self.crop_clicked.emit)
-        buttons_layout.addWidget(self.crop_btn)
-        
         buttons_layout.addStretch()
         
         buttons_container.setLayout(buttons_layout)

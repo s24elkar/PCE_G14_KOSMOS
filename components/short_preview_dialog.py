@@ -24,7 +24,8 @@ class ShortPreviewDialog(QDialog):
             self.reject()
         else:
             # Charger et jouer la vidéo automatiquement avec le lecteur OpenCV
-            self.video_player.load_video(self.temp_video_path, autoplay=True)
+            self.video_player.load_video(self.temp_video_path)
+            self.video_player.play()
             # Activer la lecture en boucle
             self.video_player.video_thread.set_looping(True)
 

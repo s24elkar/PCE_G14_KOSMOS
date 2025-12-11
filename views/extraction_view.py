@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QPushButton, QGroupBox, QVBoxLayout
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QMessageBox, QInputDialog
 from PyQt6.QtCore import Qt, pyqtSignal
 
 # Import des composants depuis components/
@@ -20,6 +20,9 @@ from components.correction import ImageCorrection
 from components.histogramme import Histogram
 from components.courbe_tonale import ToneCurveEditor # AJOUT
 from components.outils_modification import ExtractionTools
+from components.clip_editor_dialog import ClipEditorDialog
+from components.short_preview_dialog import ShortPreviewDialog
+from components.detached_player import DetachedPlayerWindow
 
 
 class ExtractionView(QWidget):
@@ -267,10 +270,10 @@ class ExtractionView(QWidget):
                     self.extraction_tools.short_clicked.connect(
                         self.controller.on_create_short
                     )
-                if hasattr(self.extraction_tools, 'crop_clicked'):
-                    self.extraction_tools.crop_clicked.connect(
-                        self.controller.on_crop
-                    )
+                # if hasattr(self.extraction_tools, 'crop_clicked'):
+                #     self.extraction_tools.crop_clicked.connect(
+                #         self.controller.on_crop
+                #     )
             
             # CORRECTION
             if hasattr(self, 'image_correction'):
@@ -336,7 +339,7 @@ class ExtractionView(QWidget):
 
                 if hasattr(self.video_player, 'detach_requested'):
                     self.video_player.detach_requested.connect(
-                        self.controller.on_detach_player
+                        self.detach_video_player
                     )
                 if hasattr(self.video_player, 'controls'):
                     if hasattr(self.video_player.controls, 'previous_clicked'):
@@ -433,3 +436,116 @@ class ExtractionView(QWidget):
         """Réinitialise toutes les corrections d'image"""
         if hasattr(self, 'image_correction') and hasattr(self.image_correction, 'reset_all'):
             self.image_correction.reset_all()
+
+    # ═══════════════════════════════════════════════════════════════
+    # GESTION DES DIALOGUES ET FENÊTRES (UI LOGIC)
+    # ═══════════════════════════════════════════════════════════════
+
+    def ask_screenshot_type(self):
+        """Demande à l'utilisateur le type de capture d'écran."""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Type de capture")
+        msg_box.setText("Quel type de capture d'écran souhaitez-vous effectuer ?")
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        
+        btn_full = msg_box.addButton("Image complète", QMessageBox.ButtonRole.YesRole)
+        btn_crop = msg_box.addButton("Sélectionner une zone", QMessageBox.ButtonRole.NoRole)
+        msg_box.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
+        
+        msg_box.exec()
+        
+        clicked_button = msg_box.clickedButton()
+        if clicked_button == btn_full:
+            return "full"
+        elif clicked_button == btn_crop:
+            return "crop"
+        return None
+
+    def ask_capture_name(self):
+        """Demande à l'utilisateur le nom de la capture."""
+        capture_name, ok_pressed = QInputDialog.getText(
+            self,
+            "Nommer la capture",
+            "Entrez le nom de la capture (sans extension) :",
+        )
+        if ok_pressed and capture_name:
+            return capture_name
+        return None
+
+    def open_clip_editor(self, video_path, start_ms, end_ms):
+        """Ouvre la fenêtre d'édition de clip."""
+        # Récupérer les filtres actifs du lecteur principal
+        filters = {}
+        if hasattr(self, 'video_player') and hasattr(self.video_player, 'active_filters'):
+            filters = self.video_player.active_filters
+
+        dialog = ClipEditorDialog(video_path, start_ms, end_ms, filters=filters, parent=self)
+        accepted = dialog.exec()
+        if accepted:
+            return dialog.get_values()
+        return None
+
+    def ask_short_duration(self, durations):
+        """Demande à l'utilisateur de choisir une durée pour le short."""
+        selected_duration_str, ok = QInputDialog.getItem(
+            self,
+            "Choisir la durée du Short",
+            "Quelle durée pour votre short ?",
+            durations,
+            0,
+            False
+        )
+        if ok:
+            return selected_duration_str
+        return None
+
+    def open_short_preview(self, preview_path):
+        """Ouvre la fenêtre d'aperçu du short."""
+        preview_dialog = ShortPreviewDialog(preview_path, self)
+        accepted = preview_dialog.exec()
+        if accepted:
+            return preview_dialog.get_short_name()
+        return None
+
+    def detach_video_player(self):
+        """Détache le lecteur dans une nouvelle fenêtre."""
+        if not hasattr(self, 'video_player'):
+            return
+        
+        # Sauvegarder la référence au layout parent
+        if not hasattr(self, 'video_player_parent_layout'):
+            self.video_player_parent_layout = self.video_player.parent().layout()
+            self.video_player_parent_index = self.video_player_parent_layout.indexOf(self.video_player)
+        
+        # Retirer le lecteur
+        self.video_player_parent_layout.removeWidget(self.video_player)
+        self.video_player.setParent(None)
+        
+        # Créer la fenêtre détachée
+        self.detached_window = DetachedPlayerWindow(self.video_player, parent=None)
+        self.detached_window.closed.connect(self.reattach_video_player)
+        self.detached_window.show()
+        print("🗗 Lecteur détaché dans une nouvelle fenêtre")
+
+    def reattach_video_player(self):
+        """Réattache le lecteur à la vue principale."""
+        if not hasattr(self, 'detached_window') or not self.detached_window:
+            return
+        
+        # Récupérer le lecteur
+        video_player = self.detached_window.video_player
+        video_player.setParent(self)
+        
+        # Réinsérer dans le layout
+        if hasattr(self, 'video_player_parent_layout') and hasattr(self, 'video_player_parent_index'):
+            self.video_player_parent_layout.insertWidget(
+                self.video_player_parent_index, 
+                video_player, 
+                stretch=5
+            )
+        
+        # Nettoyer
+        self.detached_window.deleteLater()
+        self.detached_window = None
+        print("🔗 Lecteur réattaché à la vue principale")
+
