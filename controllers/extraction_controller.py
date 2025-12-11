@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import QApplication
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from kosmos_processing.algos_correction import UnderwaterFilters
+from models.app_model import UnderwaterFilters
 
 class ExtractionKosmosController(QObject):
     """

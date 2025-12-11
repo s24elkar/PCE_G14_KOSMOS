@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from kosmos_processing import algos_correction as ac
+from models import app_model as ac
 
 
 def test_dehaze_and_denoise_pipeline_runs_end_to_end():

@@ -34,7 +34,6 @@ Repository = "https://example.com/kosmos/repo"
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
-    "kosmos_processing*",
     "models*",
     "controllers*",
     "views*",
