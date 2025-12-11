@@ -137,7 +137,7 @@ class TriKosmosView(QWidget):
         main_layout.setSpacing(0)
         
         self.navbar = NavBar(
-            tabs=["Fichier", "Tri", "Extraction", "IA"],
+            tabs=["Fichier", "Tri", "Extraction"],
             default_tab="Tri"
         )
         main_layout.addWidget(self.navbar)

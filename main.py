@@ -45,10 +45,6 @@ from controllers.tri_controller import TriKosmosController
 from views.extraction_view import ExtractionView
 from controllers.extraction_controller import ExtractionKosmosController
 
-# 5. IA
-from ia_module.ia_view import IAKosmosView
-from ia_module.ia_controller import IAKosmosController
-
 
 class KosmosApplication(QMainWindow):
     """
@@ -68,7 +64,6 @@ class KosmosApplication(QMainWindow):
         self.telechargement_controller = None
         self.tri_controller = None
         self.extraction_controller = None 
-        self.ia_controller = None
         
         # Vues
         self.accueil_view = None
@@ -76,7 +71,6 @@ class KosmosApplication(QMainWindow):
         self.telechargement_view = None
         self.tri_view = None
         self.extraction_view = None
-        self.ia_view = None
         
         self.init_ui()
         self.init_controllers()
@@ -129,11 +123,6 @@ class KosmosApplication(QMainWindow):
         self.extraction_view.view_shown.connect(self.extraction_controller.load_initial_data)
         self.stack.addWidget(self.extraction_view)
 
-        # PAGE IA
-        self.ia_controller = IAKosmosController(self.model)
-        self.ia_view = IAKosmosView(self.ia_controller)
-        self.stack.addWidget(self.ia_view)
-        
         # Afficher la page d'accueil par défaut
         self.stack.setCurrentWidget(self.accueil_view)
         
@@ -164,13 +153,9 @@ class KosmosApplication(QMainWindow):
         if self.extraction_controller:
             self.extraction_controller.navigation_demandee.connect(self.naviguer_vers)
 
-        # Navigation depuis la page IA
-        if self.ia_controller:
-            self.ia_controller.navigation_demandee.connect(self.naviguer_vers)
-        
         # Gérer les changements d'onglet dans la navbar (Vue -> Main)
         for view in [self.accueil_view, self.importation_view, self.telechargement_view,
-                     self.tri_view, self.extraction_view, self.ia_view]:
+                     self.tri_view, self.extraction_view]:
             if view and hasattr(view, 'navbar'):
                 view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
                 # Connecter le signal de téléchargement si disponible (NavBarAvecMenu)
@@ -217,13 +202,6 @@ class KosmosApplication(QMainWindow):
             else:
                 print("❌ Page d'extraction non disponible")
 
-        elif nom_page == "ia":
-            if self.ia_view:
-                self.ia_view.charger_videos()
-                self.stack.setCurrentWidget(self.ia_view)
-            else:
-                print("❌ Page IA non disponible")
-
         elif nom_page == "evenements":
             print("⚠️ Page d'événements pas encore implémentée")
         else:
@@ -235,7 +213,6 @@ class KosmosApplication(QMainWindow):
             'Fichier': 'accueil',
             'Téléchargement': 'telechargement',
             'Tri': 'tri',
-            'IA': 'ia',
             'Extraction': 'extraction',
             'Évènements': 'evenements'
         }
@@ -250,8 +227,6 @@ class KosmosApplication(QMainWindow):
             self.tri_view.charger_videos()
         if self.extraction_controller:
             self.extraction_controller.load_initial_data()
-        if self.ia_controller and self.ia_view:
-            self.ia_view.charger_videos()
     
     def on_campagne_ouverte(self, chemin: str):
         print(f"✅ Campagne ouverte : {chemin}")
@@ -260,8 +235,6 @@ class KosmosApplication(QMainWindow):
             self.tri_view.charger_videos()
         if self.extraction_controller:
             self.extraction_controller.load_initial_data()
-        if self.ia_controller and self.ia_view:
-            self.ia_view.charger_videos()
     
     def closeEvent(self, event):
         if self.model.campagne_courante:

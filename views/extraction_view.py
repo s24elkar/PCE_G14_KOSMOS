@@ -60,7 +60,7 @@ class ExtractionView(QWidget):
         # ============================================================
         try:
             self.navbar = NavBar(
-                tabs=["Fichier", "Tri", "Extraction", "IA"],
+                tabs=["Fichier", "Tri", "Extraction"],
                 default_tab="Extraction"
             )
             # Forcer le fond blanc de la navbar

@@ -6,6 +6,4 @@ pyqtgraph>=0.13,<0.15
 pandas>=2.1,<2.3
 ephem>=4.1
 requests>=2.31
-torch>=2.2,<3.0
-ultralytics>=8.1.0
 paramiko>=3.4,<4.0

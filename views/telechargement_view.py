@@ -42,7 +42,7 @@ class TelechargementKosmosView(QWidget):
         # NAVBAR
         try:
             self.navbar = NavBar(
-                tabs=["Fichier", "Tri", "Extraction", "IA"],
+                tabs=["Fichier", "Tri", "Extraction"],
                 default_tab="Fichier",
             )
             self.navbar.setStyleSheet(
