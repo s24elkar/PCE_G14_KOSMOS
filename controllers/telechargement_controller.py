@@ -24,6 +24,7 @@ class TelechargementService:
         self.timeout = timeout
 
     def _connect(self, log_cb: Callable[[str], None]):
+        """Établit une connexion SSH."""
         log_cb(f"Connexion SSH vers {self.ip}:{self.port} ...")
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -48,6 +49,7 @@ class TelechargementService:
             raise RuntimeError(f"Connexion SSH impossible : {e}")
 
     def telecharger(self, remote_path: str, destination: str, log_cb: Callable[[str], None]):
+        """Télécharge un fichier ou répertoire distant via SFTP."""
         Path(destination).mkdir(parents=True, exist_ok=True)
         log_cb(f"Téléchargement depuis {self.ip}:{remote_path}")
 
@@ -67,6 +69,7 @@ class TelechargementService:
             client.close()
 
     def _download_recursive(self, sftp: paramiko.SFTPClient, remote_path: str, local_path: str, log_cb: Callable[[str], None]):
+        """Télécharge récursivement un répertoire ou fichier distant."""
         try:
             attr = sftp.stat(remote_path)
         except FileNotFoundError as e:
@@ -86,6 +89,7 @@ class TelechargementService:
                 raise RuntimeError(f"Échec téléchargement {remote_path}: {e}")
 
     def supprimer(self, remote_path: str, log_cb: Callable[[str], None]):
+        """Supprime un fichier ou répertoire distant via SSH."""
         log_cb(f"Suppression à distance : {remote_path}")
         client = self._connect(log_cb)
         try:
@@ -110,6 +114,7 @@ class TelechargementWorker(QThread):
         self.action = action  # "download" ou "delete"
 
     def run(self):
+        """Exécute l'action demandée en tâche de fond."""
         try:
             service = TelechargementService(
                 self.params["ip"],
@@ -146,6 +151,7 @@ class TelechargementController(QObject):
         self.worker = None
 
     def _demarrer_worker(self, params: Dict, action: str):
+        """Démarre un worker pour exécuter une action en tâche de fond."""
         # Empêche de lancer deux opérations simultanément
         if self.worker and self.worker.isRunning():
             self.log_emis.emit("🚧 Une opération est déjà en cours.")
@@ -164,6 +170,7 @@ class TelechargementController(QObject):
         return True
 
     def _liberer_worker(self):
+        """Libère la référence au worker une fois terminé."""
         self.worker = None
 
     def lancer_telechargement(self, params: Dict):

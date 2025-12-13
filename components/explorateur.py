@@ -55,7 +55,7 @@ class MediaThumbnail(QWidget):
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.thumbnail_label)
         
-        # Nom de la vidéo (CENTRÉ)
+        # Nom de la vidéo 
         name_label = QLabel(self.video_name)
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setStyleSheet("""

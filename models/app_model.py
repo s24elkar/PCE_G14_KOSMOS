@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 
-# Constants for Metadata Labels
+# Labels pour l'affichage des métadonnées
 METADATA_COMMUNES_LABELS = {
     'system_camera': 'Caméra',
     'system_model': 'Modèle',
@@ -599,6 +599,7 @@ class ApplicationModel:
         print(f"{'='*60}")
         print(f"📁 Dossier principal : {dossier_principal}")
         
+        # Vérifier que le dossier principal existe
         try:
             tous_elements = os.listdir(dossier_principal)
             print(f"📂 {len(tous_elements)} éléments trouvés dans le dossier principal")
@@ -1118,14 +1119,14 @@ if __name__ == '__main__':
 
 
 def Float2BGR(I):
-    # Conversion d'un float (0 - 1) à nb sur 8 bits (0 - 255)
+    """Conversion d'un float (0 - 1) à nb sur 8 bits (0 - 255)"""
     erf = I * 255
     src = erf.astype("uint8")
     return src
 
 
 def BGR2Float(src):
-    # Conversion d'un nb sur 8 bits (0 - 255) vers un float
+    """Conversion d'un nb sur 8 bits (0 - 255) vers un float"""
     a = src.astype("float64") / 255
     return a
 
@@ -1168,6 +1169,7 @@ def PlotHistogram(I):
 
 
 def process_image_HE(I, vB, vG, vR):
+    """Egalisation d'histogramme avec des valeurs données pour chaque canal."""
     (MeanB, MeanG, MeanR), (SquareB, SquareG, SquareR) = AnalyseHisto(I)
     II = np.zeros(I.shape, dtype=np.float64)
     eps = 1e-6
@@ -1224,6 +1226,7 @@ def AtmLight(im, dark):
 
 
 def TransmissionEstimate(im, A, sz, omega=0.6):
+    """Estimation de la transmission de l'image"""
     im3 = np.empty(im.shape, im.dtype)  # Initialisation du tableau correspondant à la transmission
 
     for ind in range(0, 3):
@@ -1255,6 +1258,7 @@ def Guidedfilter(im, p, r=60, eps=0.0001):
 
 
 def TransmissionRefine(im, et, r=60, eps=0.0001):
+    """Affinement de la transmission estimée"""
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)  # Image en teinte de gris
     gray = np.float64(gray) / 255
     t = Guidedfilter(gray, et, r, eps)
@@ -1276,6 +1280,7 @@ def Recover(im, t, A, tx=1.0):
 
 
 def atm_calculation(II):
+    """Calcul de la lumière atmosphérique"""
     srcc = BGR2Float(II)
     dark = DarkChannel(srcc, 15)
     A = AtmLight(srcc, dark)
@@ -1283,6 +1288,7 @@ def atm_calculation(II):
 
 
 def water_calculation(II):
+    """Calcul de la lumière atmosphérique pour l'eau"""
     srcc = BGR2Float(II)
     dark = DarkChannelWater(srcc, 15)
     A = AtmLight(srcc, dark)
@@ -1290,6 +1296,7 @@ def water_calculation(II):
 
 
 def process_image_dehaze(II, A, window=15, omega=0.6, guided_radius=60, guided_eps=0.0001, tx=0.1):
+    """Débrumage de l'image"""
     srcc = BGR2Float(II)
     te = TransmissionEstimate(srcc, A, window, omega=omega)
     t = TransmissionRefine(II, te, r=guided_radius, eps=guided_eps)

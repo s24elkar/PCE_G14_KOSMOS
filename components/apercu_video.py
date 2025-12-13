@@ -1,18 +1,19 @@
+"""
+Composant d'aperçu des vidéos avec miniatures animées au survol.
+Utilise OpenCV pour la lecture vidéo lors du survol.
+"""
+
 import sys
 import os
 import subprocess
 import time
 from pathlib import Path
 import cv2
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QFrame, QGridLayout, QSizePolicy
-)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QFrame, QGridLayout, QSizePolicy)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QPixmap, QImage
 
-# ═══════════════════════════════════════════════════════════════
-# WIDGET MINIATURE (Extrait de tri_view.py)
-# ═══════════════════════════════════════════════════════════════
+
 
 class AnimatedThumbnailLabel(QLabel):
     """QLabel personnalisé qui gère l'affichage d'un Pixmap statique et le remplace par une lecture OpenCV lors du survol"""
@@ -112,6 +113,7 @@ class AnimatedThumbnailLabel(QLabel):
             return
 
         try:
+            """ Convertit la frame BGR en QImage et l'affiche """
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb_image.shape
             bytes_per_line = ch * w
@@ -131,7 +133,7 @@ class AnimatedThumbnailLabel(QLabel):
 
 
 # ═══════════════════════════════════════════════════════════════
-# EXTRACTION DE MINIATURES (THREAD - SIMPLIFIÉ)
+# EXTRACTION DE MINIATURES
 # ═══════════════════════════════════════════════════════════════
 
 class PreviewExtractorThread(QThread):
@@ -150,6 +152,7 @@ class PreviewExtractorThread(QThread):
         self._is_running = False
 
     def run(self):
+        """Extrait les miniatures et émet un signal quand chacune est prête"""
         for idx, (seek_time, duration) in enumerate(self.seek_info):
             if not self._is_running:
                 break
@@ -165,6 +168,7 @@ class PreviewExtractorThread(QThread):
                 print(f"⚠️ Erreur extraction preview {idx}: {e}")
 
     def extract_thumbnail(self, seek_time, output_path):
+        """Utilise ffmpeg pour extraire une miniature à un temps donné"""
         if output_path.exists():
             pixmap = QPixmap(str(output_path))
             if not pixmap.isNull():
@@ -221,11 +225,13 @@ class ApercuVideos(QWidget):
         thumbnails_layout.setSpacing(6)
         thumbnails_layout.setContentsMargins(8, 8, 8, 8) 
         
+        # Configuration des miniatures
         thumbnail_min_width = 300 
         thumbnail_min_height = int(thumbnail_min_width / 1.87)
         thumbnail_max_width = 550 
         thumbnail_max_height = int(thumbnail_max_width / 1.87)
 
+        # Ajout des 6 miniatures avec labels
         idx_counter = 1
         for row in range(2):
             for col in range(3):

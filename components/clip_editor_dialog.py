@@ -3,9 +3,7 @@ Fenêtre de dialogue pour éditer et enregistrer un extrait vidéo.
 Affiche la vidéo complète avec une timeline et des poignées de sélection.
 """
 import datetime
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox, QLineEdit, QWidget
-)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox, QLineEdit, QWidget)
 from PyQt6.QtCore import Qt, QUrl, QTimer
 from .lecteur import VideoPlayer
 

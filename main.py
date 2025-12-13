@@ -17,31 +17,12 @@ from PyQt6.QtGui import QFont
 from models.app_model import ApplicationModel
 
 # Import des contrôleurs et vues
-# 1. Accueil
-try:
-    from views.accueil_view import AccueilView
-    from controllers.accueil_controller import AccueilController
-except ImportError:
-    from views.accueil_view import AccueilKosmosView as AccueilView
-    from controllers.accueil_controller import AccueilKosmosController as AccueilController
-
-# 2. Importation
-try:
-    from views.importation_view import ImportationView
-    from controllers.importation_controller import ImportationController
-except ImportError:
-    from views.importation_view import ImportationKosmosView as ImportationView
-    from controllers.importation_controller import ImportationKosmosController as ImportationController
-
-# 2bis. Téléchargement
+from views.accueil_view import AccueilKosmosView
+from controllers.accueil_controller import AccueilKosmosController
 from views.telechargement_view import TelechargementKosmosView
 from controllers.telechargement_controller import TelechargementController
-
-# 3. Tri
 from views.tri_view import TriKosmosView
 from controllers.tri_controller import TriKosmosController
-
-# 4. Extraction (C'est ici que ça manquait peut-être)
 from views.extraction_view import ExtractionView
 from controllers.extraction_controller import ExtractionKosmosController
 
@@ -60,14 +41,12 @@ class KosmosApplication(QMainWindow):
         
         # Contrôleurs pour chaque page
         self.accueil_controller = None
-        self.importation_controller = None
         self.telechargement_controller = None
         self.tri_controller = None
         self.extraction_controller = None 
         
         # Vues
         self.accueil_view = None
-        self.importation_view = None
         self.telechargement_view = None
         self.tri_view = None
         self.extraction_view = None
@@ -92,16 +71,10 @@ class KosmosApplication(QMainWindow):
         """Initialise les contrôleurs et les vues"""
         
         # PAGE D'ACCUEIL
-        self.accueil_controller = AccueilController(self.model)
-        self.accueil_view = AccueilView(self.accueil_controller)
-        self.accueil_controller.set_view(self.accueil_view) # AJOUT: Lier la vue au contrôleur
+        self.accueil_controller = AccueilKosmosController(self.model)
+        self.accueil_view = AccueilKosmosView(self.accueil_controller)
+        self.accueil_controller.set_view(self.accueil_view)
         self.stack.addWidget(self.accueil_view)
-        
-        # PAGE D'IMPORTATION
-        self.importation_controller = ImportationController(self.model)
-        self.importation_view = ImportationView(self.importation_controller)
-        self.importation_controller.set_view(self.importation_view) # AJOUT: Lier la vue au contrôleur
-        self.stack.addWidget(self.importation_view)
 
         # PAGE DE TÉLÉCHARGEMENT
         self.telechargement_controller = TelechargementController(self.model)
@@ -118,7 +91,7 @@ class KosmosApplication(QMainWindow):
         self.extraction_view = ExtractionView(self.extraction_controller)
         # Important : Lier la vue au contrôleur
         self.extraction_controller.set_view(self.extraction_view)
-        # --- NOUVELLE CONNEXION ---
+
         # Charger les données uniquement lorsque la vue est réellement affichée
         self.extraction_view.view_shown.connect(self.extraction_controller.load_initial_data)
         self.stack.addWidget(self.extraction_view)
@@ -136,10 +109,6 @@ class KosmosApplication(QMainWindow):
             self.accueil_controller.navigation_demandee.connect(self.naviguer_vers)
             self.accueil_controller.campagne_creee.connect(self.on_campagne_creee)
             self.accueil_controller.campagne_ouverte.connect(self.on_campagne_ouverte)
-        
-        # Navigation depuis la page d'importation
-        if self.importation_controller:
-            self.importation_controller.navigation_demandee.connect(self.naviguer_vers)
 
         # Navigation depuis la page de téléchargement
         if self.telechargement_controller:
@@ -154,7 +123,7 @@ class KosmosApplication(QMainWindow):
             self.extraction_controller.navigation_demandee.connect(self.naviguer_vers)
 
         # Gérer les changements d'onglet dans la navbar (Vue -> Main)
-        for view in [self.accueil_view, self.importation_view, self.telechargement_view,
+        for view in [self.accueil_view, self.telechargement_view,
                      self.tri_view, self.extraction_view]:
             if view and hasattr(view, 'navbar'):
                 view.navbar.tab_changed.connect(self.on_navbar_tab_changed)
@@ -176,11 +145,6 @@ class KosmosApplication(QMainWindow):
         # Changer de vue
         if nom_page == "accueil":
             self.stack.setCurrentWidget(self.accueil_view)
-
-        elif nom_page == "importation":
-            self.stack.setCurrentWidget(self.importation_view)
-            if hasattr(self.importation_view, 'auto_open'):
-                self.importation_view.auto_open = True
 
         elif nom_page == "telechargement":
             if self.telechargement_view:

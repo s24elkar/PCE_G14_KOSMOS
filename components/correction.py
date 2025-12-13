@@ -3,8 +3,7 @@ Composant Correction des Images
 Contrôles pour correction couleurs, contraste, luminosité et filtres avancés
 """
 from typing import Optional 
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
-                             QPushButton, QGroupBox, QGridLayout, QScrollArea)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QPushButton, QGroupBox, QGridLayout, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 
@@ -203,7 +202,7 @@ class ImageCorrection(QWidget):
         self.brightness_slider.value_changed.connect(self.brightness_changed.emit)
         controls_layout.addWidget(self.brightness_slider)
 
-        # NOUVEAU : Groupe pour les filtres de couleur
+        # Groupe pour les filtres de couleur
         color_filters_group = QGroupBox("Filtres de couleur")
         color_filters_group.setStyleSheet("""
             QGroupBox {
@@ -278,10 +277,13 @@ class ImageCorrection(QWidget):
                 border-color: #2196F3;
             }
         """)
+
+        # Layout des boutons de filtres
         filters_layout = QVBoxLayout(self.filters_groupbox)
         filters_layout.setSpacing(6)
         filters_layout.setContentsMargins(8, 8, 8, 8)
         
+        # Boutons de filtres
         self.btn_gamma = QPushButton("Correction Gamma")
         self.btn_gamma.setCheckable(True)
         self.btn_gamma.toggled.connect(self.gamma_toggled.emit)

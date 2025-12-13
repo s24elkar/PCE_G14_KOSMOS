@@ -2,10 +2,7 @@
 Composant Formulaire Métadonnées
 Gère l'affichage et l'édition des métadonnées (communes et propres)
 """
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QPushButton, QLineEdit, QScrollArea, QSplitter
-)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,QPushButton, QLineEdit, QScrollArea, QSplitter)
 from PyQt6.QtCore import Qt, pyqtSignal
 from models.app_model import METADATA_COMMUNES_LABELS, METADATA_PROPRES_LABELS
 
@@ -54,6 +51,7 @@ class FormulaireMetadonnees(QWidget):
         self.setLayout(layout)
 
     def create_metadata_section(self, title, type_meta="communes"):
+        """Crée une section de métadonnées avec un titre et une zone de contenu défilante."""
         container = QFrame()
         container.setObjectName("metadata_section")
         container.setStyleSheet("#metadata_section { background-color: black; border: 2px solid white; }")
@@ -135,6 +133,7 @@ class FormulaireMetadonnees(QWidget):
         return container
 
     def create_metadata_row(self, key, readonly=True):
+        """Crée une ligne de métadonnée avec un label et un champ d'édition."""
         row_widget = QWidget()
         row_layout = QHBoxLayout()
         row_layout.setContentsMargins(3, 2, 3, 2)
@@ -155,6 +154,7 @@ class FormulaireMetadonnees(QWidget):
         return {'container': row_widget, 'widget': value_widget}
 
     def vider_layout(self, layout):
+        """Vide un layout de tous ses widgets enfants."""
         if layout is not None:
             while layout.count():
                 child = layout.takeAt(0)
@@ -228,6 +228,7 @@ class FormulaireMetadonnees(QWidget):
         self.reset_edit_propres()
 
     def on_toggle_edit_communes(self):
+        """Gère le basculement entre mode édition et validation pour les métadonnées communes."""
         if not self.edit_communes:
             # Passer en mode édition
             for w in self.meta_communes_fields.values(): w.setReadOnly(False)
@@ -243,6 +244,7 @@ class FormulaireMetadonnees(QWidget):
             # On laisse le contrôleur appeler reset_edit_communes() en cas de succès
 
     def on_toggle_edit_propres(self):
+        """Gère le basculement entre mode édition et validation pour les métadonnées propres."""
         if not self.edit_propres:
             for w in self.meta_propres_fields.values(): w.setReadOnly(False)
             self.edit_propres = True
@@ -254,12 +256,14 @@ class FormulaireMetadonnees(QWidget):
             self.modification_propres_demandee.emit(nouvelles_meta)
 
     def reset_edit_communes(self):
+        """Réinitialise l'état d'édition des métadonnées communes."""
         for w in self.meta_communes_fields.values(): w.setReadOnly(True)
         self.edit_communes = False
         self.btn_modifier_communes.setText("Modifier")
         self.btn_modifier_propres.setEnabled(True)
 
     def reset_edit_propres(self):
+        """Réinitialise l'état d'édition des métadonnées propres."""
         for w in self.meta_propres_fields.values(): w.setReadOnly(True)
         self.edit_propres = False
         self.btn_modifier_propres.setText("Modifier")
@@ -267,6 +271,7 @@ class FormulaireMetadonnees(QWidget):
         self.btn_modifier_communes.setEnabled(True)
     
     def set_precalcul_loading(self, loading=True):
+        """Met à jour l'état du bouton de pré-calcul."""
         if loading:
             self.btn_precalculer.setText("Calcul...")
             self.btn_precalculer.setEnabled(False)

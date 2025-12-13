@@ -2,10 +2,9 @@
 Composant NavBar réutilisable 
 Barre de navigation personnalisée avec onglets et contrôles de fenêtre
 """
-import sys
 from PyQt6.QtWidgets import QPushButton, QWidget, QHBoxLayout, QMenu
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
-from PyQt6.QtGui import QFont, QPalette, QColor, QAction
+from PyQt6.QtGui import QPalette, QColor, QAction
 
 class NavBar(QWidget):
     """
@@ -14,10 +13,7 @@ class NavBar(QWidget):
     """
     
     tab_changed = pyqtSignal(str)
-    nouvelle_campagne_clicked = pyqtSignal()
     ouvrir_campagne_clicked = pyqtSignal()
-    enregistrer_clicked = pyqtSignal()
-    enregistrer_sous_clicked = pyqtSignal()
     telechargement_clicked = pyqtSignal()
     
     def __init__(self, tabs=None, default_tab=None, disable_tabs=False, parent=None):
@@ -40,6 +36,7 @@ class NavBar(QWidget):
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(0)
         
+        """Créer les boutons d'onglets"""
         for tab_name in self.tabs:
             is_active = (tab_name == self.default_tab)
             btn = self.create_nav_button(tab_name, is_active)
@@ -167,11 +164,7 @@ class NavBar(QWidget):
             }
         """)
         
-        action_creer = QAction("Créer un repertoire de travail", self)
-        action_creer.triggered.connect(self.nouvelle_campagne_clicked.emit)
-        self.fichier_menu.addAction(action_creer)
-        
-        action_ouvrir = QAction("Ouvrir un repertoire de travail", self)
+        action_ouvrir = QAction("Ouvrir campagne", self)
         action_ouvrir.triggered.connect(self.ouvrir_campagne_clicked.emit)
         self.fichier_menu.addAction(action_ouvrir)
         
@@ -180,16 +173,6 @@ class NavBar(QWidget):
         action_telechargement = QAction("Téléchargement", self)
         action_telechargement.triggered.connect(self.telechargement_clicked.emit)
         self.fichier_menu.addAction(action_telechargement)
-
-        self.fichier_menu.addSeparator()
-        
-        action_enregistrer = QAction("Enregistrer", self)
-        action_enregistrer.triggered.connect(self.enregistrer_clicked.emit)
-        self.fichier_menu.addAction(action_enregistrer)
-        
-        action_enregistrer_sous = QAction("Enregistrer sous", self)
-        action_enregistrer_sous.triggered.connect(self.enregistrer_sous_clicked.emit)
-        self.fichier_menu.addAction(action_enregistrer_sous)
     
     def show_fichier_menu(self):
         """Affiche le menu déroulant "Fichier" """
@@ -263,9 +246,11 @@ class NavBar(QWidget):
         self.drag_position = None
     
     def minimize_window(self):
+        """Minimise la fenêtre"""
         self.window().showMinimized()
     
     def toggle_maximize(self):
+        """Maximise ou restaure la fenêtre"""   
         if self.window().isMaximized():
             self.window().showNormal()
             self.maximize_btn.setText("□")
@@ -274,4 +259,5 @@ class NavBar(QWidget):
             self.maximize_btn.setText("❐")
     
     def close_window(self):
+        """Ferme la fenêtre"""
         self.window().close()

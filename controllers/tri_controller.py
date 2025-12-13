@@ -38,9 +38,11 @@ class TriKosmosController(QObject):
     
     
     def obtenir_videos(self):
+        """Retourne la liste des vidéos de la campagne courante."""
         return self.model.obtenir_videos()
     
     def selectionner_video(self, nom_video: str):
+        """Sélectionne une vidéo par son nom et émet un signal."""
         video = self.model.selectionner_video(nom_video)
         if video:
             self.video_selectionnee.emit(video)
@@ -55,12 +57,15 @@ class TriKosmosController(QObject):
                 pass
     
     def renommer_video(self, ancien_nom: str, nouveau_nom: str):
+        """Renomme une vidéo dans la campagne courante."""
         return self.model.renommer_video(ancien_nom, nouveau_nom)
     
     def conserver_video(self, nom_video: str):
+        """Marque une vidéo comme conservée (non supprimée)."""
         return self.model.conserver_video(nom_video)
     
     def supprimer_video(self, nom_video: str) -> bool:
+        """Supprime définitivement une vidéo de la campagne courante."""
         return self.model.supprimer_fichier_video(nom_video)
 
    
@@ -134,7 +139,7 @@ class TriKosmosController(QObject):
         succes_global = True
         nb_videos_maj = 0
 
-        # 2. Itérer sur TOUTES les vidéos de la campagne pour propager les changements
+        # 2. Itérer sur toutes les vidéos de la campagne pour propager les changements
         for video in self.model.campagne_courante.videos:
             # Mise à jour en mémoire
             for key, value in metadonnees.items():
@@ -159,13 +164,16 @@ class TriKosmosController(QObject):
         return video.sauvegarder_metadonnees_communes_json()
     
     def get_video_by_name(self, nom_video: str):
+        """Retourne une vidéo par son nom."""
         if not self.model.campagne_courante: return None
         return self.model.campagne_courante.obtenir_video(nom_video)
 
     def get_angle_seek_times(self, nom_video: str):
+        """Retourne les temps d'angle pour une vidéo donnée."""
         return self.model.get_angle_event_times(nom_video)
 
     def precalculer_metadonnees_externes(self, nom_video: str) -> bool:
+        """Pré-calcul des métadonnées externes (météo, astronomie) et mise à jour du JSON."""
         print(f"🔄 Lancement du pré-calcul pour {nom_video}...")
         if not self.model.campagne_courante: return False
         video = self.model.campagne_courante.obtenir_video(nom_video)

@@ -3,8 +3,7 @@ Composant Lecteur Vidéo
 Lecteur avec timeline, contrôles et affichage des métadonnées
 Utilise OpenCV dans un QThread pour l'affichage vidéo avec overlay personnalisé
 """
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QStackedLayout,
-                             QPushButton, QSlider, QFrame)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QStackedLayout,QPushButton, QSlider, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QSize, QPoint, QThread
 from PyQt6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap, QIcon, QBrush, QCursor, QImage
 from pathlib import Path
@@ -994,7 +993,7 @@ class VideoPlayer(QWidget):
         pixmap_to_capture = self.video_widget.get_current_pixmap_for_capture()
         self._capture_in_progress = True
         
-        # CORRECTION: Utiliser la frame OpenCV stockée dans VideoPlayer (self.current_cv_frame)
+        # Utiliser la frame OpenCV stockée dans VideoPlayer (self.current_cv_frame)
         # et non une frame inexistante sur le widget d'affichage.
         if self.current_cv_frame is None:
             print("❌ Aucune frame OpenCV disponible pour la capture.")
@@ -1032,7 +1031,7 @@ class VideoPlayer(QWidget):
             
             # Extraire la zone
             if x2 > x1 and y2 > y1:
-                # CORRECTION: Forcer une copie contiguë de la mémoire après le découpage.
+                # Forcer une copie contiguë de la mémoire après le découpage.
                 # Le slicing NumPy peut retourner une "vue" non contiguë, ce qui cause une
                 # TypeError avec QImage. .copy() résout ce problème.
                 frame = frame[y1:y2, x1:x2].copy()

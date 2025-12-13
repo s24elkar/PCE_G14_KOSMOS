@@ -2,38 +2,19 @@
 VUE - Page d'accueil KOSMOS
 Architecture MVC - Vue uniquement
 """
-import sys
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent
+import sys
 sys.path.insert(0, str(project_root))
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMenu,
-    QDialog, QLineEdit, QPushButton, QFileDialog, QMessageBox,
-    QFrame, QDialogButtonBox
+    QWidget, QVBoxLayout, QLabel, QFileDialog, QMessageBox, QFrame
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
-from PyQt6.QtGui import QFont, QAction
+from PyQt6.QtCore import Qt
 
-# Import du contrôleur
-from controllers.accueil_controller import AccueilKosmosController
+# Import des composants
 from components.navbar import NavBar
-from components.fenetre_campagne import FenetreNouvelleCampagne
-
-
-# ═══════════════════════════════════════════════════════════════
-# DIALOGUE NOUVELLE CAMPAGNE
-# ═══════════════════════════════════════════════════════════════
-# (Déplacé dans components/fenetre_campagne.py)
-
-
-
-# ═══════════════════════════════════════════════════════════════
-# NAVBAR AVEC MENU FICHIER
-# ═══════════════════════════════════════════════════════════════
-# (Déplacé dans components/navbar.py)
-
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -61,10 +42,59 @@ class AccueilKosmosView(QWidget):
         )
         main_layout.addWidget(self.navbar)
         
-        content = QFrame()
-        content.setStyleSheet("background-color: black;")
-        main_layout.addWidget(content)
+        # CONTENU NOIR
+        content_frame = QFrame()
+        content_frame.setStyleSheet("background-color: black;")
+        content_layout = QVBoxLayout()
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
+        # ZONE CENTRALE
+        center_widget = QWidget()
+        center_layout = QVBoxLayout()
+        center_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        center_layout.setSpacing(30)
+        
+        # Titre
+        titre = QLabel("KOSMOS")
+        titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        titre.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 48px;
+                font-weight: bold;
+                margin-bottom: 20px;
+            }
+        """)
+        center_layout.addWidget(titre)
+        
+        # Sous-titre
+        sous_titre = QLabel("Dérushage Vidéo Sous-Marine")
+        sous_titre.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sous_titre.setStyleSheet("""
+            QLabel {
+                color: #cccccc;
+                font-size: 18px;
+                margin-bottom: 40px;
+            }
+        """)
+        center_layout.addWidget(sous_titre)
+        
+        # Instruction
+        instruction = QLabel("Utilisez le menu Fichier pour ouvrir une campagne")
+        instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        instruction.setStyleSheet("""
+            QLabel {
+                color: #888888;
+                font-size: 14px;
+            }
+        """)
+        center_layout.addWidget(instruction)
+        
+        center_widget.setLayout(center_layout)
+        content_layout.addWidget(center_widget)
+        
+        content_frame.setLayout(content_layout)
+        main_layout.addWidget(content_frame)
         self.setLayout(main_layout)
     
     def connecter_signaux(self):
@@ -72,17 +102,8 @@ class AccueilKosmosView(QWidget):
         if not self.controller:
             return
         
-        self.navbar.nouvelle_campagne_clicked.connect(
-            self.controller.on_creer_campagne
-        )
         self.navbar.ouvrir_campagne_clicked.connect(
             self.controller.on_ouvrir_campagne
-        )
-        self.navbar.enregistrer_clicked.connect(
-            self.controller.on_enregistrer
-        )
-        self.navbar.enregistrer_sous_clicked.connect(
-            self.controller.on_enregistrer_sous
         )
 
     # ═══════════════════════════════════════════════════════════════
@@ -105,26 +126,29 @@ class AccueilKosmosView(QWidget):
         """Affiche une boîte de dialogue d'erreur"""
         QMessageBox.critical(self, title, message)
 
-    def open_new_campaign_dialog(self):
-        """Ouvre le dialogue de création de nouvelle campagne"""
-        dialogue = FenetreNouvelleCampagne(self)
-        # On retourne l'instance pour que le contrôleur puisse connecter les signaux
-        return dialogue
+    def ask_confirmation(self, title, message):
+        """Demande une confirmation à l'utilisateur"""
+        reponse = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        return reponse == QMessageBox.StandardButton.Yes
+
 
 
 # ═══════════════════════════════════════════════════════════════
 # TEST
 # ═══════════════════════════════════════════════════════════════
 if __name__ == '__main__':
+    import sys
+    from pathlib import Path
     from PyQt6.QtWidgets import QApplication, QMainWindow
-    
-    sys.path.insert(0, str(Path(__file__).parent))
-    
-    try:
-        from models.app_model import ApplicationModel
-    except ImportError:
-        print("❌ Impossible d'importer ApplicationModel")
-        sys.exit(1)
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QFont
+    from models.app_model import ApplicationModel
+    from controllers.accueil_controller import AccueilKosmosController
     
     app = QApplication(sys.argv)
     font = QFont("Montserrat", 10)
@@ -138,6 +162,7 @@ if __name__ == '__main__':
     window.setGeometry(50, 50, 1200, 700)
     
     view = AccueilKosmosView(controller)
+    controller.set_view(view)
     window.setCentralWidget(view)
     
     controller.navigation_demandee.connect(

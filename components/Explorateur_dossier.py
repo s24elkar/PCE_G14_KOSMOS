@@ -3,10 +3,7 @@ Composant Liste des Vidéos
 Tableau affichant la liste des vidéos avec options de renommage et suppression.
 Remplace l'ancien Explorateur_dossier.py pour la vue de Tri.
 """
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, 
-    QPushButton, QHeaderView
-)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QHeaderView)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class VideoList(QWidget):

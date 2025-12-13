@@ -4,7 +4,7 @@ Architecture MVC
 Gère la logique de la page d'extraction (lecture, navigation, outils)
 """
 import datetime
-import csv # AJOUT
+import csv 
 import json
 import sys
 import cv2
@@ -12,6 +12,7 @@ import numpy as np
 import subprocess
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication
 
 # Ajout du chemin racine pour les imports
