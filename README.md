@@ -2,6 +2,13 @@
 
 Logiciel de derushage pour vidéos sous-marines.
 
+Aperçu du logiciel 
+
+<img width="1919" height="1137" alt="Capture d&#39;écran 2025-12-14 164431" src="https://github.com/user-attachments/assets/52f4d56e-e292-4786-8a30-9df2c53b3b61" />
+
+
+<img width="1919" height="1134" alt="Capture d&#39;écran 2025-12-14 164616" src="https://github.com/user-attachments/assets/96e9cfb7-6f7e-4457-8537-e6f01122428e" />
+
 ## Architecture
 
 ### Structure MVC
