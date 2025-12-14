@@ -9,6 +9,9 @@ Logiciel de derushage pour vidéos sous-marines.
 - **View** (`views/`) : Interfaces graphiques PyQt6
 - **Controller** (`controllers/`) : Logique métier et orchestration
 - **Components** (`components/`) : Composants réutilisables (lecteur, explorateur, outils)
+- 
+  <img width="1892" height="2044" alt="Architecture_kosmos_finale" src="https://github.com/user-attachments/assets/4259ab63-52bd-4ebb-8575-234f2038b895" />
+
 
 ### Technologies
 - **Interface** : PyQt6
