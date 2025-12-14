@@ -180,6 +180,9 @@ class ImageCorrection(QWidget):
                 font-weight: bold;
                 padding: 10px;
                 border-bottom: 2px solid #ddd;
+                border-top : none;
+                border-left : none;
+                border-right : none;
                 font-family: 'Montserrat';
             }
         """)
@@ -343,10 +346,7 @@ class ImageCorrection(QWidget):
         main_layout.addWidget(scroll_area)
         
         self.setLayout(main_layout)
-        self.setStyleSheet("""
-                background-color: black;
-                border: 2px solid white;
-        """)
+
         
     def reset_all(self):
         """Réinitialise tous les contrôles"""

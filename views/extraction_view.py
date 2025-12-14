@@ -174,7 +174,7 @@ class ExtractionView(QWidget):
             """)
             bottom_layout.addWidget(self.image_correction, stretch=1)
         except Exception as e:
-            print(f"⚠️ Erreur chargement correction: {e}")
+            print(f"Erreur chargement correction: {e}")
             correction_placeholder = QLabel("CORRECTION\nD'IMAGES")
             correction_placeholder.setStyleSheet("""
                     background-color: #1a1a1a; 

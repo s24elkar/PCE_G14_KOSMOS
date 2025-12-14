@@ -65,7 +65,7 @@ class KosmosApplication(QMainWindow):
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
         
-        print("✅ Interface principale initialisée")
+        print("Interface principale initialisée")
     
     def init_controllers(self):
         """Initialise les contrôleurs et les vues"""
@@ -99,7 +99,7 @@ class KosmosApplication(QMainWindow):
         # Afficher la page d'accueil par défaut
         self.stack.setCurrentWidget(self.accueil_view)
         
-        print("✅ Contrôleurs et vues initialisés")
+        print("Contrôleurs et vues initialisés")
     
     def connecter_navigation(self):
         """Connecte les signaux de navigation entre les pages"""
@@ -131,13 +131,13 @@ class KosmosApplication(QMainWindow):
                 if hasattr(view.navbar, 'telechargement_clicked'):
                     view.navbar.telechargement_clicked.connect(lambda: self.naviguer_vers('telechargement'))
         
-        print("✅ Navigation connectée")
+        print("Navigation connectée")
     
     def naviguer_vers(self, nom_page: str):
         """
         Navigue vers une page spécifique
         """
-        print(f"🔄 Navigation vers : {nom_page}")
+        print(f"Navigation vers : {nom_page}")
         
         # Mettre à jour l'état dans le modèle
         self.model.page_courante = nom_page
@@ -150,7 +150,7 @@ class KosmosApplication(QMainWindow):
             if self.telechargement_view:
                 self.stack.setCurrentWidget(self.telechargement_view)
             else:
-                print("❌ Page de téléchargement non disponible")
+                print("Page de téléchargement non disponible")
 
         elif nom_page == "tri":
             if self.tri_view:
@@ -158,18 +158,18 @@ class KosmosApplication(QMainWindow):
                 self.stack.setCurrentWidget(self.tri_view)
                 print(f"📹 {len(self.model.obtenir_videos())} vidéo(s) affichée(s)")
             else:
-                print("❌ Page de tri non disponible")
+                print("Page de tri non disponible")
 
         elif nom_page == "extraction":
             if self.extraction_view:
                 self.stack.setCurrentWidget(self.extraction_view)
             else:
-                print("❌ Page d'extraction non disponible")
+                print("Page d'extraction non disponible")
 
         elif nom_page == "evenements":
-            print("⚠️ Page d'événements pas encore implémentée")
+            print("Page d'événements pas encore implémentée")
         else:
-            print(f"⚠️ Page inconnue : {nom_page}")
+            print(f"Page inconnue : {nom_page}")
     
     def on_navbar_tab_changed(self, tab_name: str):
         """Gère le changement d'onglet dans la navbar"""
@@ -193,7 +193,7 @@ class KosmosApplication(QMainWindow):
             self.extraction_controller.load_initial_data()
     
     def on_campagne_ouverte(self, chemin: str):
-        print(f"✅ Campagne ouverte : {chemin}")
+        print(f"Campagne ouverte : {chemin}")
         # Recharger les données dans tous les contrôleurs
         if self.tri_controller:
             self.tri_view.charger_videos()
@@ -203,14 +203,14 @@ class KosmosApplication(QMainWindow):
     def closeEvent(self, event):
         if self.model.campagne_courante:
             self.model.sauvegarder_campagne()
-            print("💾 Campagne sauvegardée avant fermeture")
+            print("Campagne sauvegardée avant fermeture")
         event.accept()
 
 
 def main():
     """Lance l'application KOSMOS"""
     print("=" * 60)
-    print("🚀 LANCEMENT DE L'APPLICATION KOSMOS")
+    print("LANCEMENT DE L'APPLICATION KOSMOS")
     print("=" * 60)
     
     app = QApplication(sys.argv)
@@ -220,7 +220,7 @@ def main():
     window = KosmosApplication()
     window.show()
     
-    print("\n✅ Application lancée avec succès!")
+    print("\n Application lancée avec succès!")
     print("\n" + "=" * 60)
     
     sys.exit(app.exec())

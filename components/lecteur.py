@@ -184,12 +184,12 @@ class CustomVideoWidget(QLabel):
             self.update()
             return
             
-        if 'time' in metadata_dict: self.metadata_lines.append(f"⏰ Time : {metadata_dict['time']}")
-        if 'temp' in metadata_dict: self.metadata_lines.append(f"🌡️ Temp : {metadata_dict['temp']}")
+        if 'time' in metadata_dict: self.metadata_lines.append(f"Time : {metadata_dict['time']}")
+        if 'temp' in metadata_dict: self.metadata_lines.append(f"Temp : {metadata_dict['temp']}")
         # if 'salinity' in metadata_dict: self.metadata_lines.append(f"💧 Salinity : {metadata_dict['salinity']}") # Exemple
         # if 'depth' in metadata_dict: self.metadata_lines.append(f"📏 Depth : {metadata_dict['depth']}") # Exemple
-        if 'pression' in metadata_dict: self.metadata_lines.append(f"⚖️ Pression : {metadata_dict['pression']}")
-        if 'lux' in metadata_dict: self.metadata_lines.append(f"💡 Lux : {metadata_dict['lux']}")
+        if 'pression' in metadata_dict: self.metadata_lines.append(f"Pression : {metadata_dict['pression']}")
+        if 'lux' in metadata_dict: self.metadata_lines.append(f"Lux : {metadata_dict['lux']}")
         
         self.update() # Demande un redessinage
 
@@ -312,7 +312,7 @@ class CustomVideoWidget(QLabel):
         """Termine la sélection de zone de capture."""
         if self.is_cropping and event.button() == Qt.MouseButton.LeftButton:
             crop_rect = QRect(self.crop_start_point, self.crop_end_point).normalized()
-            print(f"🖱️ Fin sélection: {crop_rect}")
+            print(f"Fin sélection: {crop_rect}")
             
             self.is_cropping = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -322,7 +322,7 @@ class CustomVideoWidget(QLabel):
             if crop_rect.width() > 5 and crop_rect.height() > 5:
                 self.crop_area_selected.emit(crop_rect)
             else:
-                print("⚠️ Sélection trop petite, ignorée")
+                print("Sélection trop petite, ignorée")
         else:
             super().mouseReleaseEvent(event)
 
@@ -520,6 +520,8 @@ class VideoControls(QWidget):
         self.play_icon_path = self.icons_path / "start.png"
         self.pause_icon_path = self.icons_path / "Pause.png"
         self.speed_icon_path = self.icons_path / "vitesse.png"
+        self.next_icon_path = self.icons_path / "bouton-suivant.png"
+        self.previous_icon_path = self.icons_path / "precedent.png"
         
         self.init_ui()
         
@@ -548,8 +550,8 @@ class VideoControls(QWidget):
         """
         
         # Bouton Vidéo précédente
-        self.btn_previous = QPushButton("⏮️")
-        self.btn_previous.setFixedSize(45, 45)
+        self.btn_previous = QPushButton(QIcon(str(self.previous_icon_path)), "")
+        self.btn_previous.setFixedSize(25, 25)
         self.btn_previous.setStyleSheet(button_style)
         self.btn_previous.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_previous.setToolTip("Vidéo précédente")
@@ -558,7 +560,7 @@ class VideoControls(QWidget):
         
         # Bouton Reculer
         self.btn_rewind = QPushButton("-10s")
-        self.btn_rewind.setFixedSize(45, 45)
+        self.btn_rewind.setFixedSize(45, 25)
         self.btn_rewind.setStyleSheet(button_style)
         self.btn_rewind.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_rewind.setToolTip("Reculer de 10 secondes")
@@ -567,7 +569,7 @@ class VideoControls(QWidget):
         
         # Bouton Play/Pause avec icône personnalisée
         self.play_pause_btn = QPushButton()
-        self.play_pause_btn.setFixedSize(45, 45)  # Réduit de 55 à 45
+        self.play_pause_btn.setFixedSize(25, 25)  # Réduit de 55 à 45
         self.play_pause_btn.setStyleSheet(button_style)
         self.play_pause_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.play_pause_btn.setToolTip("Lecture / Pause")
@@ -577,7 +579,7 @@ class VideoControls(QWidget):
         
         # Bouton Avancer
         self.btn_forward = QPushButton("+10s")
-        self.btn_forward.setFixedSize(45, 45)
+        self.btn_forward.setFixedSize(45, 25)
         self.btn_forward.setStyleSheet(button_style)
         self.btn_forward.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_forward.setToolTip("Avancer de 10 secondes")
@@ -585,8 +587,8 @@ class VideoControls(QWidget):
         layout.addWidget(self.btn_forward)
         
         # Bouton Vidéo suivante
-        self.btn_next = QPushButton("⏭️")
-        self.btn_next.setFixedSize(45, 45)
+        self.btn_next = QPushButton(QIcon(str(self.next_icon_path)), "")
+        self.btn_next.setFixedSize(25, 25)
         self.btn_next.setStyleSheet(button_style)
         self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_next.setToolTip("Vidéo suivante")
@@ -597,7 +599,7 @@ class VideoControls(QWidget):
         
         # Bouton de vitesse avec icône personnalisée
         self.btn_speed = QPushButton(f"{self.current_speed}x")
-        self.btn_speed.setFixedSize(70, 45)
+        self.btn_speed.setFixedSize(70, 25)
         self.btn_speed.setStyleSheet(button_style)
         self.btn_speed.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_speed.setToolTip("Changer la vitesse de lecture")
@@ -615,7 +617,7 @@ class VideoControls(QWidget):
         
         # Bouton détacher
         self.btn_detach = QPushButton("🪟")
-        self.btn_detach.setFixedSize(45, 45)
+        self.btn_detach.setFixedSize(25, 25)
         self.btn_detach.setStyleSheet(button_style)
         self.btn_detach.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_detach.setToolTip("Détacher dans une nouvelle fenêtre")
@@ -624,7 +626,7 @@ class VideoControls(QWidget):
 
         # Bouton afficher/cacher métadonnées
         self.btn_toggle_metadata = QPushButton("ℹ️")
-        self.btn_toggle_metadata.setFixedSize(45, 45)
+        self.btn_toggle_metadata.setFixedSize(25, 25)
         self.btn_toggle_metadata.setStyleSheet(button_style)
         self.btn_toggle_metadata.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_toggle_metadata.setToolTip("Afficher / Cacher les métadonnées")
@@ -635,7 +637,7 @@ class VideoControls(QWidget):
 
         # Bouton plein écran
         self.btn_fullscreen = QPushButton("⛶")
-        self.btn_fullscreen.setFixedSize(45, 45)
+        self.btn_fullscreen.setFixedSize(25, 25)
         self.btn_fullscreen.setStyleSheet(button_style)
         self.btn_fullscreen.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_fullscreen.setToolTip("Plein écran (F ou Échap pour quitter)")
