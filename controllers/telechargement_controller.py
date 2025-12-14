@@ -1,7 +1,6 @@
 """
 Contrôleur Téléchargement - KOSMOS
-Gère les transferts et suppressions distants via SSH/SFTP (paramiko)
-Compatible Windows (pas d'usage de pexpect/pty).
+Gère les transferts et suppressions distants via SSH/SFTP (paramiko).
 """
 import os
 import stat
@@ -14,7 +13,7 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 
 class TelechargementService:
-    """Service bas niveau pour les opérations SSH/SFTP."""
+    """Connexion SSH/SFTP et opérations bas niveau."""
 
     def __init__(self, ip: str, user: str, password: str, port: int = 22, timeout: int = 30):
         self.ip = ip
@@ -99,7 +98,7 @@ class TelechargementService:
 
 
 class TelechargementWorker(QThread):
-    """Thread de travail pour éviter de bloquer l'IHM."""
+    """Thread pour téléchargement/suppression sans bloquer l'IHM."""
 
     log_emis = pyqtSignal(str)
     termine = pyqtSignal(bool, str)
@@ -133,7 +132,7 @@ class TelechargementWorker(QThread):
 
 
 class TelechargementController(QObject):
-    """Contrôleur pour la page Téléchargement"""
+    """Contrôleur page Téléchargement : gestion des opérations distantes."""
 
     navigation_demandee = pyqtSignal(str)
     log_emis = pyqtSignal(str)
@@ -171,5 +170,5 @@ class TelechargementController(QObject):
         return self._demarrer_worker(params, "download")
 
     def supprimer_donnees(self, params: Dict):
-        """Supprime les données sur le KOSMOS."""
+        """Supprime des données distantes sur le KOSMOS."""
         return self._demarrer_worker(params, "delete")

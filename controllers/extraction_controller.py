@@ -21,10 +21,7 @@ sys.path.insert(0, str(project_root))
 from models.app_model import UnderwaterFilters
 
 class ExtractionKosmosController(QObject):
-    """
-    Contrôleur pour la page d'extraction.
-    Gère les interactions entre la vue ExtractionView et le modèle ApplicationModel.
-    """
+    """Contrôleur pour la page d'extraction : lecture vidéo, correction d'image, capture/enregistrement."""
     
     # Signal pour demander à l'application principale de changer de page
     navigation_demandee = pyqtSignal(str)
@@ -48,10 +45,7 @@ class ExtractionKosmosController(QObject):
             self.view.view_shown.connect(self.load_first_video)
 
     def load_first_video(self):
-        """
-        Charge la première vidéo marquée comme "conservée" dans le lecteur.
-        Cette méthode est appelée lorsque la page d'extraction devient visible.
-        """
+        """Charge la première vidéo conservée au démarrage de la page."""
         if not self.model.campagne_courante:
             return
 
@@ -62,10 +56,7 @@ class ExtractionKosmosController(QObject):
             self.charger_video_dans_lecteur(premiere_video)
 
     def load_initial_data(self):
-        """
-        Charge les données initiales dans la vue au démarrage.
-        Récupère la liste des vidéos du modèle et met à jour l'explorateur.
-        """
+        """Charge les vidéos dans l'explorateur et affiche la vidéo sélectionnée."""
         if not self.view:
             return
 
@@ -108,10 +99,7 @@ class ExtractionKosmosController(QObject):
             self.navigation_demandee.emit(tabs_map[tab_name])
 
     def on_video_selected(self, video_name):
-        """
-        Appelé quand une vidéo est cliquée dans l'explorateur.
-        Met à jour le modèle et demande à la vue de charger la vidéo.
-        """
+        """Gère le clic sur une vidéo : sélection et chargement dans le lecteur."""
         # Mettre à jour le modèle
         video = self.model.selectionner_video(video_name)
         
@@ -237,22 +225,22 @@ class ExtractionKosmosController(QObject):
         self.view.show_message("Correction automatique appliquée.", "success")
 
     def on_toggle_gamma(self, toggled):
-        """Active ou désactive la correction gamma."""
+        """Toggle correction gamma.""" 
         if self.view and hasattr(self.view, 'video_player'):
             self.view.video_player.toggle_filter('gamma', UnderwaterFilters.apply_gamma, toggled, gamma=1.2)
 
     def on_toggle_contrast(self, toggled):
-        """Active ou désactive l'amélioration du contraste."""
+        """Toggle amélioration contraste."""
         if self.view and hasattr(self.view, 'video_player'):
             self.view.video_player.toggle_filter('contrast', UnderwaterFilters.enhance_contrast, toggled, clip_limit=1.5)
 
     def on_toggle_denoise(self, toggled):
-        """Active ou désactive la réduction de bruit."""
+        """Toggle réduction bruit."""
         if self.view and hasattr(self.view, 'video_player'):
             self.view.video_player.toggle_filter('denoise', UnderwaterFilters.denoise, toggled, h=10.0)
 
     def on_toggle_sharpen(self, toggled):
-        """Active ou désactive le filtre de netteté."""
+        """Toggle netteté."""
         if self.view and hasattr(self.view, 'video_player'):
             self.view.video_player.toggle_filter('sharpen', UnderwaterFilters.sharpen, toggled)
 
@@ -285,7 +273,7 @@ class ExtractionKosmosController(QObject):
     # ═══════════════════════════════════════════════════════════════
 
     def on_screenshot(self):
-        """Active le mode de sélection sur le lecteur vidéo pour une capture d'écran."""
+        """Capture d'écran : plein écran ou zone sélectionnée."""
         if not self.model.video_selectionnee:
             self.view.show_message("Aucune vidéo sélectionnée.", "warning")
             return
@@ -304,21 +292,17 @@ class ExtractionKosmosController(QObject):
             self.on_crop()
 
     def on_crop(self):
-        """Active le mode de recadrage sur le lecteur vidéo."""
+        """Mode recadrage : dessiner un rectangle sur la vidéo."""
         if self.view and hasattr(self.view, 'video_player'):
             self.view.show_message("Dessinez un rectangle sur la vidéo pour capturer une zone.", "info")
             self.view.video_player.start_cropping()
 
     def on_crop_area_selected(self, crop_rect):
-        """Slot appelé lorsque l'utilisateur a sélectionné une zone à capturer."""
-        # Demande au lecteur de capturer l'image, en lui passant la zone à recadrer.
+        """Capture la zone sélectionnée par l'utilisateur."""
         self.view.video_player.grab_frame(crop_rect)
 
     def save_captured_frame(self, frame: 'QPixmap'):
-        """
-        Reçoit le QPixmap (déjà recadré si nécessaire), demande un nom à l'utilisateur,
-        puis sauvegarde l'image.
-        """
+        """Sauvegarde la frame capturée dans le dossier captures/."""
         if not frame:
             self.view.show_message("Impossible de capturer l'image de la vidéo.", "error")
             return
@@ -359,10 +343,7 @@ class ExtractionKosmosController(QObject):
             self.pending_capture_name = None
             
     def _export_video_with_filters(self, source_path, output_path, start_ms, end_ms):
-        """
-        Exporte une portion de vidéo en appliquant les filtres actifs via OpenCV
-        et en encodant via FFmpeg (pipe).
-        """
+        """Exporte un extrait vidéo avec filtres appliqués (OpenCV + FFmpeg pipe)."""
         import cv2
         
         cap = cv2.VideoCapture(str(source_path))
@@ -650,13 +631,7 @@ class ExtractionKosmosController(QObject):
 
 
     def _generer_miniature_video(self, chemin_video):
-        """
-        Génère une miniature (QPixmap) à partir de la première frame d'une vidéo.
-        Args:
-            chemin_video: Chemin vers le fichier vidéo
-        Returns:
-            QPixmap ou None si échec
-        """
+        """Génère une miniature (première frame)."""
         try:
             import cv2
             from PyQt6.QtGui import QImage, QPixmap
