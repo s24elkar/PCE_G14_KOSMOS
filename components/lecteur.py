@@ -295,7 +295,7 @@ class CustomVideoWidget(QLabel):
         if self.is_cropping and event.button() == Qt.MouseButton.LeftButton:
             self.crop_start_point = event.pos()
             self.crop_end_point = self.crop_start_point
-            print(f"🖱️ Début sélection: {self.crop_start_point}")
+            print(f"Début sélection: {self.crop_start_point}")
             self.update()
         else:
             super().mousePressEvent(event)
@@ -780,7 +780,7 @@ class VideoPlayer(QWidget):
 
             self.histogram_data_ready.emit(r_hist, g_hist, b_hist, density_hist)
         except Exception as e:
-            print(f"❌ Erreur calcul histogramme: {e}")
+            print(f"Erreur calcul histogramme: {e}")
 
     def closeEvent(self, event):
         """S'assure que le thread est bien arrêté à la fermeture."""
@@ -797,7 +797,7 @@ class VideoPlayer(QWidget):
                 try:
                     processed_frame = filter_func(processed_frame, **kwargs)
                 except Exception as e:
-                    print(f"❌ Erreur en appliquant le filtre '{name}': {e}")
+                    print(f"Erreur en appliquant le filtre '{name}': {e}")
         
         # Calculer et émettre les données de l'histogramme de l'image traitée
         self._calculate_and_emit_histogram(processed_frame)
@@ -931,7 +931,7 @@ class VideoPlayer(QWidget):
         if self.video_widget.is_cropping and event.key() == Qt.Key.Key_Escape:
             self.video_widget.is_cropping = False
             self.on_cropping_finished_by_child()
-            print("🖱️ Sélection de zone annulée.")
+            print("Sélection de zone annulée.")
             self.video_widget.update()
         # Échapper du plein écran
         elif self.is_fullscreen and event.key() == Qt.Key.Key_Escape:
@@ -958,12 +958,12 @@ class VideoPlayer(QWidget):
 
     def on_cropping_finished_by_child(self):
         """Slot appelé par le widget enfant quand la capture (réussie ou non) est terminée."""
-        print("🛑 Fin du mode capture (signal enfant)")
+        print("Fin du mode capture (signal enfant)")
         # Reprendre la lecture si elle était en cours avant la capture
         if hasattr(self, '_was_playing_before_crop') and self._was_playing_before_crop:
             if hasattr(self.video_thread, 'is_paused') and self.video_thread.is_paused:
                 self.video_thread.play()
-                print("▶️ Reprise de la lecture")
+                print("Reprise de la lecture")
         self._was_playing_before_crop = False
 
     def on_timeline_released(self):
@@ -973,23 +973,23 @@ class VideoPlayer(QWidget):
 
     def start_cropping(self):
         """Passe le lecteur en mode sélection."""
-        print("🎯 Démarrage du mode capture")
+        print("Démarrage du mode capture")
         self._capture_in_progress = False
         # Mémoriser l'état et mettre en pause
         self._was_playing_before_crop = not self.video_thread.is_paused
         if self._was_playing_before_crop:
             self.video_thread.pause()
-            print("⏸️ Vidéo mise en pause pour la capture")
+            print("Vidéo mise en pause pour la capture")
         self.video_widget.start_cropping_mode()
-        print("✅ Mode capture activé - dessinez un rectangle sur la vidéo")
+        print("Mode capture activé - dessinez un rectangle sur la vidéo")
 
     def grab_frame(self, crop_rect: QRect = None) -> None:
         """Capture la frame actuelle avec OpenCV."""
-        print(f"📸 Capture frame OpenCV: zone={crop_rect}")
+        print(f"Capture frame OpenCV: zone={crop_rect}")
         
         # Protection contre les captures multiples
         if hasattr(self, '_capture_in_progress') and self._capture_in_progress:
-            print("⚠️ Capture déjà en cours, annulation")
+            print("Capture déjà en cours, annulation")
             return
 
         pixmap_to_capture = self.video_widget.get_current_pixmap_for_capture()
@@ -998,7 +998,7 @@ class VideoPlayer(QWidget):
         # Utiliser la frame OpenCV stockée dans VideoPlayer (self.current_cv_frame)
         # et non une frame inexistante sur le widget d'affichage.
         if self.current_cv_frame is None:
-            print("❌ Aucune frame OpenCV disponible pour la capture.")
+            print("Aucune frame OpenCV disponible pour la capture.")
             return
         frame = self.current_cv_frame.copy()
         
@@ -1008,7 +1008,7 @@ class VideoPlayer(QWidget):
                 try:
                     frame = filter_func(frame, **kwargs)
                 except Exception as e:
-                    print(f"❌ Erreur en appliquant le filtre '{name}' lors de la capture: {e}")
+                    print(f"Erreur en appliquant le filtre '{name}' lors de la capture: {e}")
         
         if crop_rect:
             # Calculer les proportions entre le widget et la frame originale
@@ -1037,9 +1037,9 @@ class VideoPlayer(QWidget):
                 # Le slicing NumPy peut retourner une "vue" non contiguë, ce qui cause une
                 # TypeError avec QImage. .copy() résout ce problème.
                 frame = frame[y1:y2, x1:x2].copy()
-                print(f"✂️ Zone extraite: ({x1},{y1}) -> ({x2},{y2})")
+                print(f"Zone extraite: ({x1},{y1}) -> ({x2},{y2})")
             else:
-                print("❌ Zone de capture invalide")
+                print("Zone de capture invalide")
                 self._capture_in_progress = False
                 return
         
@@ -1050,7 +1050,7 @@ class VideoPlayer(QWidget):
         final_pixmap = QPixmap.fromImage(q_image)
         
         self.frame_captured.emit(final_pixmap)
-        print(f"✅ Frame OpenCV capturée: {final_pixmap.size()}")
+        print(f"Frame OpenCV capturée: {final_pixmap.size()}")
         
         # Marquer la capture terminée
         self._capture_in_progress = False
@@ -1060,7 +1060,7 @@ class VideoPlayer(QWidget):
         if self.video_widget.is_cropping and event.key() == Qt.Key.Key_Escape:
             self.video_widget.is_cropping = False # Arrêter le mode capture
             self.on_cropping_finished_by_child()
-            print("🖱️ Sélection de zone annulée.")
+            print("Sélection de zone annulée.")
             self.video_widget.update()
         else:
             super().keyPressEvent(event)
@@ -1080,7 +1080,7 @@ class VideoPlayer(QWidget):
         """Appelé quand la durée est connue (en millisecondes)."""
         self.duration = duration_ms
         self.timeline.setMaximum(duration_ms)
-        print(f"⏱️ Durée OpenCV: {duration_ms}ms")
+        print(f"Durée OpenCV: {duration_ms}ms")
 
     def seek_forward(self):
         if not self._player_initialized:
@@ -1089,7 +1089,7 @@ class VideoPlayer(QWidget):
         if self.video_thread.total_frames > 0:
             new_frame = min(self.video_thread.total_frames - 1, self.video_thread.current_frame + int(10 * self.video_thread.fps))
             self.video_thread.seek(new_frame)
-            print("⏩ Avance de 10s")
+            print("Avance de 10s")
     def seek_backward(self):
         if not self._player_initialized:
             print("seek_backward: Player not initialized")
@@ -1097,7 +1097,7 @@ class VideoPlayer(QWidget):
         if self.video_thread.total_frames > 0:
             new_frame = max(0, self.video_thread.current_frame - int(10 * self.video_thread.fps))
             self.video_thread.seek(new_frame)
-        print("⏪ Recul de 10s")
+        print("Recul de 10s")
 
     def resizeEvent(self, event):
         """Redessine lors du redimensionnement."""
@@ -1112,7 +1112,7 @@ class VideoPlayer(QWidget):
         """Définit les données temporelles (issues du CSV)."""
         self.timeseries_data = data
         self.last_timeseries_index = 0
-        print(f"📈 Données temporelles reçues : {len(data)} points")
+        print(f"Données temporelles reçues : {len(data)} points")
 
     def update_timeseries_metadata(self, position_ms):
         """Met à jour les métadonnées affichées en fonction de la position temporelle."""
@@ -1146,7 +1146,7 @@ class VideoPlayer(QWidget):
         """Reçoit les métadonnées STATIQUES (du JSON) et les stocke."""
         self.static_metadata = kwargs
         # On ne met pas à jour le widget directement, update_timeseries_metadata s'en charge
-        print(f"ℹ️ Métadonnées statiques reçues: {self.static_metadata}")
+        print(f"métadonnées statiques reçues: {self.static_metadata}")
         
     def add_timeline_marker(self, position):
         """Ajoute un marqueur rouge à la timeline à la position donnée (0-100)."""
@@ -1170,12 +1170,12 @@ if __name__ == '__main__':
     
     player = VideoPlayer()
     
-    player.play_pause_clicked.connect(lambda: print("▶️/⏸️ Play/Pause"))
+    player.play_pause_clicked.connect(lambda: print(" Play/Pause"))
     player.position_changed.connect(lambda pos: print(f"Position: {pos}ms"))
-    player.controls.previous_clicked.connect(lambda: print("⏮️ Précédent"))
-    player.controls.next_clicked.connect(lambda: print("⏭️ Suivant"))
-    player.controls.speed_changed.connect(lambda s: print(f"⚡ Vitesse: {s}x"))
-    player.detach_requested.connect(lambda: print("🪟 Détachement"))
+    player.controls.previous_clicked.connect(lambda: print("Précédent"))
+    player.controls.next_clicked.connect(lambda: print("Suivant"))
+    player.controls.speed_changed.connect(lambda s: print(f" Vitesse: {s}x"))
+    player.detach_requested.connect(lambda: print("Détachement"))
     
     window.setCentralWidget(player)
     window.show()
