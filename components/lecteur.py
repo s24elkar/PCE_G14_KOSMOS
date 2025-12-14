@@ -206,10 +206,7 @@ class CustomVideoWidget(QLabel):
         
         # Utiliser QPainter pour une conversion de haute qualité de QImage vers QPixmap
         # afin d'éviter la pixellisation potentielle de fromImage().
-        pixmap = QPixmap(q_image.size())
-        painter = QPainter(pixmap)
-        painter.drawImage(0, 0, q_image)
-        painter.end()
+        pixmap = QPixmap.fromImage(q_image)
         self.current_pixmap = pixmap
         self.update()
 
@@ -220,12 +217,20 @@ class CustomVideoWidget(QLabel):
             return
 
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        pixmap_size = self.current_pixmap.size()
+        widget_size = self.size()
         
         # On ne redimensionne que si l'image est plus grande que le lecteur
         # pour éviter de la pixelliser en l'agrandissant.
         if self.current_pixmap.width() > self.width() or self.current_pixmap.height() > self.height():
             # Utiliser SmoothTransformation pour une meilleure qualité de réduction
-            pixmap_to_draw = self.current_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            pixmap_to_draw = self.current_pixmap.scaled(
+            widget_size, 
+            Qt.AspectRatioMode.KeepAspectRatio, 
+            Qt.TransformationMode.SmoothTransformation
+            )
         else:
             # Si l'image est plus petite, on l'affiche en qualité native (taille originale)
             pixmap_to_draw = self.current_pixmap
@@ -681,7 +686,7 @@ class VideoControls(QWidget):
         
         self.btn_speed.setText(f"{self.current_speed}x")
         self.speed_changed.emit(self.current_speed)
-        print(f"⚡ Vitesse changée : {self.current_speed}x")
+        print(f"Vitesse changée : {self.current_speed}x")
     
     def update_play_pause_button(self, is_playing):
         """Met à jour l'état du bouton play/pause."""

@@ -56,7 +56,7 @@ class TelechargementKosmosView(QWidget):
             )
             main_layout.addWidget(self.navbar)
         except Exception as e:
-            print(f"⚠️ Erreur navbar Téléchargement: {e}")
+            print(f"Erreur navbar Téléchargement: {e}")
             placeholder = QLabel("NAVBAR")
             placeholder.setStyleSheet("background-color: #2196F3; color: white; padding: 10px;")
             main_layout.addWidget(placeholder)
@@ -229,6 +229,16 @@ class TelechargementKosmosView(QWidget):
         self.controller.telechargement_termine.connect(self._on_download_finished)
         self.controller.suppression_terminee.connect(self._on_delete_finished)
 
+        if hasattr(self.navbar, "navbar"):
+            if hasattr(self.navbar.navbar, "tab_changed"):
+                self.navbar.navbar.tab_changed.connect(
+                    lambda tab: self.controller.navigation_demandee.emit(tab.lower())
+                )
+        
+        if hasattr(self.navbar, 'ouvrir_campagne_clicked'):
+            self.navbar.ouvrir_campagne_clicked.connect(self._on_ouvrir_campagne)
+            
+
     def _append_log(self, message: str):
         self.log_text.append(message)
         self.log_text.ensureCursorVisible()
@@ -332,3 +342,13 @@ class TelechargementKosmosView(QWidget):
             QMessageBox.information(self, "Suppression distante", message)
         else:
             QMessageBox.critical(self, "Suppression distante", message)
+
+    def _on_tab_changed(self, tab_name):
+        """Gère le changement d'onglet depuis la navbar."""
+        if tab_name == "Fichier" and self.controller:
+            self.controller.navigation_demandee.emit("accueil")
+
+    def _on_ouvrir_campagne(self):
+        """Redirige vers la page d'accueil pour ouvrir une campagne."""
+        if self.controller:
+            self.controller.navigation_demandee.emit("accueil")
