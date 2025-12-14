@@ -1,4 +1,4 @@
-# KOSMOS - Logiciel de Dérushage Vidéo Sous-Marine
+# KOSMOS 
 
 Logiciel de derushage pour vidéos sous-marines.
 
