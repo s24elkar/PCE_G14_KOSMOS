@@ -3,8 +3,8 @@ Fenêtre détachée pour le lecteur vidéo
 Permet d'afficher le lecteur dans une fenêtre indépendante
 """
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtGui import QIcon, QKeyEvent
 
 
 class DetachedPlayerWindow(QMainWindow):
@@ -21,6 +21,9 @@ class DetachedPlayerWindow(QMainWindow):
         
         # Fenêtre indépendante de premier niveau
         self.setWindowFlags(Qt.WindowType.Window)
+        
+        # Capturer le focus pour les événements clavier
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
         # Widget central
         central_widget = QWidget()
@@ -42,6 +45,16 @@ class DetachedPlayerWindow(QMainWindow):
         # Forcer la mise à jour de la vidéo après l'affichage
         if hasattr(self.video_player, 'video_widget'):
             self.video_player.video_widget.update()
+        # S'assurer que la fenêtre a le focus
+        self.setFocus()
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """Redirige les événements clavier vers le lecteur vidéo"""
+        # Transférer l'événement au lecteur vidéo
+        if self.video_player:
+            self.video_player.keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
     
     def closeEvent(self, event):
         """Événement de fermeture de la fenêtre"""
