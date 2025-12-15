@@ -120,7 +120,7 @@ pip install pyinstaller
 ```
 ### Créer l'exécutable 
 ```bash
-pyinstaller --noconsole --onedir --name "KosmosExpert" --add-data "assets;assets" --collect-all ultralytics --hidden-import="sklearn.utils._typedefs" --hidden-import="sklearn.neighbors._partition_nodes" main.py 
+python -m PyInstaller --noconsole --onedir --name "KosmosExpert" --add-data "assets;assets" --collect-all ultralytics --hidden-import="sklearn.utils._typedefs" --hidden-import="sklearn.neighbors._partition_nodes" main.py
 ```
 
 ## Auteur 
