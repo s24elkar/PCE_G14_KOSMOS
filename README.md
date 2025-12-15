@@ -1,8 +1,8 @@
 # KOSMOS 
 
-Logiciel de derushage pour vidéos sous-marines.
+KOSMOS est une application desktop de post-production scientifique dédiée au traitement de vidéos sous-marines capturées par du matériel embarqué (KOSMOS). Développée en Python avec PyQt6, elle permet aux chercheurs, biologistes marins et aux citoyens de trier, filtrer et extraire efficacement des données depuis des heures de vidéos brutes.
 
-Aperçu du logiciel 
+## Aperçu du logiciel 
 
 <img width="1919" height="1137" alt="Capture d&#39;écran 2025-12-14 164431" src="https://github.com/user-attachments/assets/52f4d56e-e292-4786-8a30-9df2c53b3b61" />
 
@@ -76,6 +76,7 @@ Campagne/
 ### Prérequis
 - Python 3.10+
 - FFmpeg (accessible dans PATH)
+- VLC media player pour éviter les problèmes d'encodage 
 
 ### Dépendances
 ```bash
@@ -91,3 +92,41 @@ winget install ffmpeg
 python main.py
 ```
 
+### Docker
+
+Construire l'image (Python 3.11 par défaut, changeable via `--build-arg PYTHON_VERSION=3.9` par ex.) :
+
+```bash
+docker build -t kosmos .
+```
+
+Lancer la suite de tests en conteneur (commande par défaut) :
+
+```bash
+docker run --rm kosmos
+```
+
+Exécuter l'appli :
+
+```bash
+docker run --rm kosmos python main.py
+```
+
+## Création d'un exécutable 
+
+### Installer pyinstaller 
+```bash
+pip install pyinstaller
+```
+### Créer l'exécutable 
+```bash
+python -m PyInstaller --noconsole --onedir --name "KosmosExpert" --add-data "assets;assets" --collect-all ultralytics --hidden-import="sklearn.utils._typedefs" --hidden-import="sklearn.neighbors._partition_nodes" main.py
+```
+
+## Auteur 
+Projet développé dans un cadre académique par : 
+- Inès OUALDI-DJEBRIL
+- Junior BINI
+- Romain CHRISTOL
+- Divine BANON
+- Sohaib EL KARMI
