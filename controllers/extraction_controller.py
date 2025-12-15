@@ -9,9 +9,12 @@ import datetime
 import csv 
 import json
 import sys
+import os
 import cv2
 import numpy as np
 import subprocess
+import threading
+import queue
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QPixmap
@@ -281,7 +284,14 @@ class ExtractionKosmosController(QObject):
 
     def on_curve_changed(self, lut):
         if self.view and hasattr(self.view, 'video_player'):
-            self.view.video_player.toggle_filter('curve', UnderwaterFilters.apply_lut, True, lut=lut)
+            # Vérifier si la LUT est neutre (identité) pour désactiver le filtre si nécessaire
+            is_identity = True
+            if isinstance(lut, list) and len(lut) == 256:
+                for i, val in enumerate(lut):
+                    if val != i:
+                        is_identity = False
+                        break
+            self.view.video_player.toggle_filter('curve', UnderwaterFilters.apply_lut, not is_identity, lut=lut)
 
     # ===========================================================================
     # OUTILS D'EXTRACTION
@@ -365,6 +375,85 @@ class ExtractionKosmosController(QObject):
         """
         import cv2
         
+        # Récupération des filtres actifs
+        filters = {}
+        if self.view and hasattr(self.view, 'video_player'):
+            filters = self.view.video_player.active_filters
+        
+        duration_ms = end_ms - start_ms
+        duration_s = duration_ms / 1000.0
+        start_s = start_ms / 1000.0
+        
+        creation_flags = 0
+        if sys.platform == "win32":
+            creation_flags = subprocess.CREATE_NO_WINDOW
+
+        # Détection automatique du GPU (NVIDIA NVENC)
+        use_gpu = False
+        try:
+            subprocess.run(
+                ['ffmpeg', '-hide_banner', '-f', 'lavfi', '-i', 'nullsrc', '-c:v', 'h264_nvenc', '-frames:v', '1', '-f', 'null', '-'], 
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creation_flags
+            )
+            use_gpu = True
+            print("✅ GPU NVIDIA détecté : Activation de l'accélération matérielle.")
+        except Exception:
+            print("ℹ️ Pas de GPU NVIDIA détecté : Utilisation du CPU.")
+
+        def get_encoding_args(gpu_active):
+            if gpu_active:
+                # NVENC : preset p1 (le plus rapide), constant quality (qp 23)
+                # p1 est optimisé pour la vitesse maximale sur les cartes RTX
+                return ['-c:v', 'h264_nvenc', '-preset', 'p1', '-rc', 'constqp', '-qp', '23']
+            return ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23']
+
+        # --- CAS 1 : Export DIRECT (Sans filtres) ---
+        if not filters:
+            print(f"🚀 Export RAPIDE ({'GPU' if use_gpu else 'CPU'})...")
+            
+            # Accélération matérielle pour le décodage (lecture) si GPU dispo
+            input_opts = ['-hwaccel', 'cuda'] if use_gpu else []
+            
+            cmd = [
+                'ffmpeg', '-y',
+                '-ss', f"{start_s:.3f}",
+            ] + input_opts + [
+                '-i', str(source_path),
+                '-t', f"{duration_s:.3f}",
+            ] + get_encoding_args(use_gpu) + [
+                '-c:a', 'aac', '-b:a', '128k',
+                str(output_path)
+            ]
+            
+            try:
+                subprocess.run(cmd, check=True, creationflags=creation_flags)
+                print("✅ Export direct terminé.")
+                return
+            except subprocess.CalledProcessError as e:
+                if use_gpu:
+                    print("⚠️ Échec GPU, tentative CPU...")
+                    # Fallback CPU en cas d'erreur GPU
+                    cmd = [
+                        'ffmpeg', '-y',
+                        '-ss', f"{start_s:.3f}",
+                        '-i', str(source_path),
+                        '-t', f"{duration_s:.3f}"
+                    ] + get_encoding_args(False) + [
+                        '-c:a', 'aac', '-b:a', '128k',
+                        str(output_path)
+                    ]
+                    try:
+                        subprocess.run(cmd, check=True, creationflags=creation_flags)
+                        print("✅ Export direct terminé (CPU fallback).")
+                        return
+                    except subprocess.CalledProcessError as e2:
+                        raise Exception(f"Erreur FFmpeg direct (CPU): {e2}")
+                else:
+                    raise Exception(f"Erreur FFmpeg direct: {e}")
+
+        # --- CAS 2 : Export FILTRÉ (OpenCV -> FFmpeg) ---
+        print(f"🎨 Export FILTRÉ ({'GPU' if use_gpu else 'CPU'})...")
+        
         cap = cv2.VideoCapture(str(source_path))
         if not cap.isOpened():
             raise Exception("Impossible d'ouvrir la vidéo source")
@@ -374,84 +463,158 @@ class ExtractionKosmosController(QObject):
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         cap.set(cv2.CAP_PROP_POS_MSEC, start_ms)
-        
-        duration_ms = end_ms - start_ms
-        duration_s = duration_ms / 1000.0
         frames_to_process = int(duration_s * fps)
         
-        start_str = str(datetime.timedelta(milliseconds=start_ms))
-
         cmd = [
             'ffmpeg', '-y',
             '-loglevel', 'error',
             '-f', 'rawvideo', '-vcodec', 'rawvideo',
             '-s', f'{width}x{height}', '-pix_fmt', 'bgr24',
             '-r', str(fps), '-i', '-',
-            '-ss', start_str, '-i', str(source_path),
-            '-t', str(duration_s),
+            '-ss', f"{start_s:.3f}", '-i', str(source_path),
+            '-t', f"{duration_s:.3f}",
             '-map', '0:v', '-map', '1:a?',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+        ] + get_encoding_args(use_gpu) + [
             '-c:a', 'aac', '-b:a', '128k',
             str(output_path)
         ]
         
-        print(f"Commande FFmpeg: {' '.join(cmd)}")
-        
-        creation_flags = 0
-        if sys.platform == "win32":
-            creation_flags = subprocess.CREATE_NO_WINDOW
-        
-        process = subprocess.Popen(
-            cmd, 
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=creation_flags
-        )
-        
-        filters = []
-        if self.view and hasattr(self.view, 'video_player'):
-            filters = self.view.video_player.active_filters
-        
-        print(f"Export avec filtres ({len(filters)} actifs)...")
+        process = None
         
         try:
+            process = subprocess.Popen(
+                cmd, 
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=creation_flags,
+                bufsize=10**8 # Grand buffer (100MB) pour éviter les goulots d'étranglement IO
+            )
+
+            # --- PIPELINE MULTI-THREADÉ (Lecture -> Traitement Parallèle -> Réordonnancement -> Écriture) ---
+            # Utilise tous les cœurs CPU disponibles pour les filtres lourds (ex: Denoise)
+            
+            # Files d'attente
+            read_queue = queue.Queue(maxsize=30)      # Images brutes lues
+            processed_queue = queue.Queue(maxsize=30) # Images traitées (désordonnées)
+            read_queue = queue.Queue(maxsize=64)      # Images brutes lues (Buffer augmenté)
+            processed_queue = queue.Queue(maxsize=64) # Images traitées (Buffer augmenté)
+            thread_error = []
+            
+            # Nombre de threads de traitement (laisser 2 cœurs libres pour l'UI et l'encodage)
+            num_workers = max(2, (os.cpu_count() or 4) - 1)
+            # Utilisation de TOUS les cœurs logiques disponibles
+            # Le thread principal (lecture) et le writer (encodage) sont peu consommateurs CPU
+            num_workers = os.cpu_count() or 4
+            print(f"🚀 Démarrage de {num_workers} threads de traitement parallèle.")
+
+            def processing_thread():
+                """Traite les images en parallèle."""
+                # Désactiver le multithreading interne d'OpenCV pour éviter la surcharge
+                cv2.setNumThreads(0)
+                while True:
+                    item = read_queue.get()
+                    if item is None:
+                        # On ne met pas None dans processed_queue ici car plusieurs workers
+                        read_queue.task_done()
+                        break
+                    
+                    idx, frame = item
+                    try:
+                        if filters:
+                            for name, (filter_func, kwargs) in filters.items():
+                                frame = filter_func(frame, **kwargs)
+                        processed_queue.put((idx, frame))
+                    except Exception as e:
+                        thread_error.append(e)
+                        processed_queue.put((idx, None))
+                    read_queue.task_done()
+
+            def writing_thread():
+                """Réordonne les images traitées et les envoie à FFmpeg."""
+                next_idx = 0
+                buffer = {} # Tampon pour réordonner les frames {index: frame}
+                
+                while True:
+                    item = processed_queue.get()
+                    if item is None: # Signal de fin
+                        processed_queue.task_done()
+                        break
+                    
+                    idx, frame = item
+                    buffer[idx] = frame
+                    
+                    # Écrire toutes les frames consécutives disponibles
+                    while next_idx in buffer:
+                        frm = buffer.pop(next_idx)
+                        if frm is None: # Erreur survenue dans un worker
+                            return
+                        try:
+                            process.stdin.write(frm.tobytes())
+                        except Exception as e:
+                            thread_error.append(e)
+                            return
+                        next_idx += 1
+                        
+                    processed_queue.task_done()
+
+            # Lancement des workers (Traitement)
+            workers = []
+            for _ in range(num_workers):
+                t = threading.Thread(target=processing_thread, daemon=True)
+                t.start()
+                workers.append(t)
+            
+            # Lancement du writer (Encodage)
+            t_write = threading.Thread(target=writing_thread, daemon=True)
+            t_write.start()
+            
             count = 0
             while count < frames_to_process:
-                QApplication.processEvents()
+                if thread_error:
+                    raise thread_error[0]
+
+                # Optimisation : ne traiter les événements que toutes les 15 frames
+                if count % 15 == 0:
+                    QApplication.processEvents()
                 
                 ret, frame = cap.read()
                 if not ret:
                     break
                 
-                if filters:
-                    for name, (filter_func, kwargs) in filters.items():
-                        try:
-                            frame = filter_func(frame, **kwargs)
-                        except Exception as e:
-                            print(f"Erreur filtre {name}: {e}")
-                
-                try:
-                    process.stdin.write(frame.tobytes())
-                except IOError as e:
-                    print(f"Erreur écriture pipe: {e}")
-                    break
+                # On envoie (index, frame) pour pouvoir réordonner après
+                read_queue.put((count, frame))
                 
                 count += 1
+            
+            # Signal de fin et attente des threads
+            for _ in range(num_workers):
+                read_queue.put(None)
+            
+            for t in workers:
+                t.join()
+                
+            processed_queue.put(None) # Signal de fin pour le writer
+            t_write.join()
         
+        except Exception as e:
+            print(f"Erreur durant l'export filtré: {e}")
+            raise e
+            
         finally:
             cap.release()
-            if process.stdin:
-                process.stdin.close()
-            
-            stdout_data, stderr_data = process.communicate()
-            
-            if process.returncode != 0:
-                stderr_output = stderr_data.decode('utf-8', errors='replace') if stderr_data else "Erreur inconnue"
-                print(f"Erreur FFmpeg (code {process.returncode}): {stderr_output}")
-                raise Exception(f"Erreur lors de l'encodage FFmpeg: {stderr_output[-200:]}")
-            else:
-                print("Export FFmpeg terminé avec succès.")
+            if process:
+                if process.stdin:
+                    process.stdin.close()
+                
+                stdout_data, stderr_data = process.communicate()
+                
+                if process.returncode != 0:
+                    stderr_output = stderr_data.decode('utf-8', errors='replace') if stderr_data else "Erreur inconnue"
+                    print(f"Erreur FFmpeg (code {process.returncode}): {stderr_output}")
+                    raise Exception(f"Erreur lors de l'encodage FFmpeg: {stderr_output[-200:]}")
+                else:
+                    print("✅ Export filtré terminé.")
 
     def on_recording(self):
         """

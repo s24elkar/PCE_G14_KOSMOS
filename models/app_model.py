@@ -1416,10 +1416,10 @@ class UnderwaterFilters:
         :param factor: intensité de correction (0.12 => +12% sur R/G).
         """
         r, g, b = cv2.split(frame)
-        r = cv2.add(r, (r * factor).astype(np.uint8))
-        g = cv2.add(g, (g * factor).astype(np.uint8))
-        corrected = cv2.merge((r, g, b))
-        return np.clip(corrected, 0, 255).astype(np.uint8)
+        # Optimisation : Utilisation de convertScaleAbs (C++) pour éviter les allocations float lentes
+        r = cv2.convertScaleAbs(r, alpha=(1.0 + factor), beta=0)
+        g = cv2.convertScaleAbs(g, alpha=(1.0 + factor), beta=0)
+        return cv2.merge((r, g, b))
 
     @staticmethod
     def apply_gamma(frame: np.ndarray, gamma: float = 1.2) -> np.ndarray:
@@ -1449,7 +1449,10 @@ class UnderwaterFilters:
         """
         Réduit le bruit dans l'image en utilisant la méthode fastNlMeansDenoisingColored de OpenCV.
         """
-        return cv2.fastNlMeansDenoisingColored(frame, None, h, h, 7, 21)
+        # Optimisation : searchWindowSize réduit de 21 à 11 pour tripler la vitesse de calcul
+        return cv2.fastNlMeansDenoisingColored(frame, None, h, h, 7, 11)
+        # Optimisation extrême : réduction des fenêtres (5, 9) pour maximiser la vitesse
+        return cv2.fastNlMeansDenoisingColored(frame, None, h, h, 5, 9)
 
     @staticmethod
     def sharpen(frame: np.ndarray) -> np.ndarray:

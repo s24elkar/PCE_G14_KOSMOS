@@ -125,9 +125,14 @@ class VideoThread(QThread):
                 if frames_to_advance >= 1:
                     if self.speed > 2.0 : 
                         frames_to_skip = frames_to_advance - 1
+                start_time = time.time()
+                
+                # Gestion simplifiée de l'avance rapide
+                if self.speed > 2.0:
+                    frames_to_skip = int(self.speed) - 1
+                    if frames_to_skip > 0:
                         for _ in range(frames_to_skip):
-                            ret = self.cap.grab()
-                            if not ret:
+                            if not self.cap.grab():
                                 break
                             self.current_frame += 1
 
@@ -137,9 +142,13 @@ class VideoThread(QThread):
                     self.current_frame += 1
                     position_ms = int((self.current_frame / self.fps) * 1000)
                     self.position_changed.emit(position_ms)
+                    # Correction de la vitesse : soustraire le temps de traitement
+                    process_time = time.time() - start_time
+                    target_delay = (1.0 / self.fps) / self.speed
                     
-                    delay = int((1000 / self.fps) / self.speed)
-                    self.msleep(delay)
+                    wait_time = target_delay - process_time
+                    if wait_time > 0:
+                        self.msleep(int(wait_time * 1000))
                 else:
                     # Si la lecture en boucle est activée, on revient au début
                     if self.loop:
