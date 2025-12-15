@@ -92,7 +92,7 @@ winget install ffmpeg
 python main.py
 ```
 
-## Docker
+### Docker
 
 Construire l'image (Python 3.11 par défaut, changeable via `--build-arg PYTHON_VERSION=3.9` par ex.) :
 
@@ -112,3 +112,21 @@ Exécuter l'appli :
 docker run --rm kosmos python main.py
 ```
 
+## Création d'un exécutable 
+
+### Installer pyinstaller 
+```bash
+pip install pyinstaller
+```
+### Créer l'exécutable 
+```bash
+pyinstaller --noconsole --onedir --name "KosmosExpert" --add-data "assets;assets" --collect-all ultralytics --hidden-import="sklearn.utils._typedefs" --hidden-import="sklearn.neighbors._partition_nodes" main.py 
+```
+
+## Auteur 
+Projet développé dans un cadre académique par : 
+- Inès OULDI-DJEBRIL
+- Junior BINI
+- Romain CHRISTOL
+- Divine BANON
+- Sohaib EL KARMI
