@@ -76,6 +76,7 @@ Campagne/
 ### Prérequis
 - Python 3.10+
 - FFmpeg (accessible dans PATH)
+- VLC media player pour éviter les problèmes d'encodage 
 
 ### Dépendances
 ```bash
