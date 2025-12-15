@@ -125,7 +125,7 @@ python -m PyInstaller --noconsole --onedir --name "KosmosExpert" --add-data "ass
 
 ## Auteur 
 Projet développé dans un cadre académique par : 
-- Inès OULDI-DJEBRIL
+- Inès OUALDI-DJEBRIL
 - Junior BINI
 - Romain CHRISTOL
 - Divine BANON
