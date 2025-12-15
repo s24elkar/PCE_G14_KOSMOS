@@ -1,8 +1,8 @@
 # KOSMOS 
 
-Logiciel de derushage pour vidéos sous-marines.
+KOSMOS est une application desktop de post-production scientifique dédiée au traitement de vidéos sous-marines capturées par du matériel embarqué (KOSMOS). Développée en Python avec PyQt6, elle permet aux chercheurs, biologistes marins et aux citoyens de trier, filtrer et extraire efficacement des données depuis des heures de vidéos brutes.
 
-Aperçu du logiciel 
+## Aperçu du logiciel 
 
 <img width="1919" height="1137" alt="Capture d&#39;écran 2025-12-14 164431" src="https://github.com/user-attachments/assets/52f4d56e-e292-4786-8a30-9df2c53b3b61" />
 
