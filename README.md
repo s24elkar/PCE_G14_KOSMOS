@@ -91,3 +91,24 @@ winget install ffmpeg
 python main.py
 ```
 
+## Docker
+
+Construire l'image (Python 3.11 par défaut, changeable via `--build-arg PYTHON_VERSION=3.9` par ex.) :
+
+```bash
+docker build -t kosmos .
+```
+
+Lancer la suite de tests en conteneur (commande par défaut) :
+
+```bash
+docker run --rm kosmos
+```
+
+Exécuter une commande différente, par exemple la visualisation ou l'appli :
+
+```bash
+docker run --rm kosmos python main.py
+docker run --rm kosmos python -m kosmos_processing.visualize path/to/video.mp4 --frame 10
+```
+
