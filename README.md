@@ -105,10 +105,9 @@ Lancer la suite de tests en conteneur (commande par défaut) :
 docker run --rm kosmos
 ```
 
-Exécuter une commande différente, par exemple la visualisation ou l'appli :
+Exécuter l'appli :
 
 ```bash
 docker run --rm kosmos python main.py
-docker run --rm kosmos python -m kosmos_processing.visualize path/to/video.mp4 --frame 10
 ```
 
